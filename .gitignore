@@ -1,0 +1,25 @@
+# Dependencias de Wally / Packages
+Packages/
+ServerPackages/
+_Index/
+
+# Node.js / Rojo / Tooling
+node_modules/
+.lune/
+.rojo/
+*.lock
+
+# Archivos de Roblox Studio y temporales
+*.rbxlx.lock
+*.rbxl.lock
+*.tmp
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Configuración local de VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
