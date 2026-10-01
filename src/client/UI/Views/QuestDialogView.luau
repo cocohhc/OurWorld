@@ -17,6 +17,7 @@ function QuestDialogView.new()
 	self.CurrentQuestId = nil
 
 	self.OnQuestAccepted = Instance.new("BindableEvent")
+	self.OnQuestClaimed = Instance.new("BindableEvent")
 
 	self:BuildUI()
 	self.ScreenGui.Parent = PlayerGui
@@ -25,45 +26,56 @@ function QuestDialogView.new()
 end
 
 function QuestDialogView:BuildUI()
-	-- Ventana principal de diálogo
+	-- Ventana principal de diálogo centrada en pantalla
 	self.MainFrame = UITheme.CreateContainer(UDim2.fromOffset(500, 320), UDim2.fromScale(0.5, 0.5))
+	self.MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 	self.MainFrame.Visible = false
 	self.MainFrame.Parent = self.ScreenGui
 
-	-- Título del NPC
-	self.NPCTitle = UITheme.CreateLabel("NPC", 18, true, Enum.TextXAlignment.Left)
-	self.NPCTitle.Size = UDim2.new(0.8, 0, 0, 24)
-	self.NPCTitle.Position = UDim2.new(0.05, 0, 0.05, 0)
-	self.NPCTitle.Parent = self.MainFrame
+	-- Header superior con borde (Altura reducida a 30px)
+	self.HeaderFrame = UITheme.CreateHeader("NPC", 30, true)
+	self.HeaderFrame.Parent = self.MainFrame
 
-	-- Botón de cerrar
-	local closeBtn = UITheme.CreateButton("X", UDim2.fromOffset(26, 26))
-	closeBtn.Position = UDim2.new(0.95, -26, 0.05, 0)
-	closeBtn.Parent = self.MainFrame
+	-- Referencia al TextLabel del Header para actualizaciones dinámicas de texto
+	self.NPCTitle = self.HeaderFrame:FindFirstChildOfClass("TextLabel")
+
+	-- Botón de cerrar dentro del Header (Reducido a 18x18)
+	local closeBtn = UITheme.CreateButton("X", UDim2.fromOffset(18, 18))
+	closeBtn.Position = UDim2.new(1, -22, 0.5, 0)
+	closeBtn.AnchorPoint = Vector2.new(0, 0.5)
+	closeBtn.ZIndex = 5
+	closeBtn.Parent = self.HeaderFrame
 	closeBtn.MouseButton1Click:Connect(function()
 		self:Toggle(false)
 	end)
 
-	-- Texto de diálogo del NPC
-	self.DialogText = UITheme.CreateLabel("...", 14, false, Enum.TextXAlignment.Left)
-	self.DialogText.Size = UDim2.new(0.9, 0, 0.25, 0)
-	self.DialogText.Position = UDim2.new(0.05, 0, 0.16, 0)
+	-- Texto de diálogo del NPC (Ajustado respecto al header más compacto)
+	self.DialogText = UITheme.CreateLabel("...", 14, false, Enum.TextXAlignment.Center)
+	self.DialogText.Size = UDim2.new(0.9, 0, 0.2, 0)
+	self.DialogText.Position = UDim2.new(0.05, 0, 0.13, 0)
 	self.DialogText.TextWrapped = true
 	self.DialogText.Parent = self.MainFrame
 
 	-- Contenedor de la misión seleccionada
-	local questContainer = UITheme.CreateContainer(UDim2.new(0.9, 0, 0.4, 0), UDim2.new(0.05, 0, 0.44, 0))
+	local questContainer = Instance.new("Frame")
+	questContainer.Size = UDim2.new(0.9, 0, 0.45, 0)
+	questContainer.Position = UDim2.new(0.5, 0, 0.38, 0)
+	questContainer.AnchorPoint = Vector2.new(0.5, 0)
+	questContainer.BackgroundTransparency = 1
+	questContainer.BorderSizePixel = 0
 	questContainer.Parent = self.MainFrame
 
-	UITheme.AddPadding(questContainer, 8, 8, 8, 8)
-
-	self.QuestTitle = UITheme.CreateLabel("Misión disponible", 15, true, Enum.TextXAlignment.Left)
-	self.QuestTitle.Size = UDim2.new(1, 0, 0, 20)
+	-- Título de la misión
+	self.QuestTitle = UITheme.CreateLabel("Misión disponible", 32, true, Enum.TextXAlignment.Center)
+	self.QuestTitle.Size = UDim2.new(1, 0, 0, 42)
+	self.QuestTitle.Position = UDim2.new(0, 0, 0, 0)
+	self.QuestTitle.Rotation = -2.5
 	self.QuestTitle.Parent = questContainer
 
-	self.QuestDesc = UITheme.CreateLabel("", 12, false, Enum.TextXAlignment.Left)
+	-- Descripción de la misión
+	self.QuestDesc = UITheme.CreateLabel("", 12, false, Enum.TextXAlignment.Center)
 	self.QuestDesc.Size = UDim2.new(1, 0, 0.6, 0)
-	self.QuestDesc.Position = UDim2.new(0, 0, 0.35, 0)
+	self.QuestDesc.Position = UDim2.new(0, 0, 0, 44)
 	self.QuestDesc.TextWrapped = true
 	self.QuestDesc.Parent = questContainer
 
@@ -79,12 +91,27 @@ function QuestDialogView:BuildUI()
 			self:Toggle(false)
 		end
 	end)
+
+	-- Botón Reclamar Recompensa
+	self.ClaimButton = UITheme.CreateButton("RECLAMAR RECOMPENSA", UDim2.new(0.9, 0, 0, 36), true)
+	self.ClaimButton.Position = UDim2.new(0.05, 0, 0.86, 0)
+	self.ClaimButton.Visible = false
+	self.ClaimButton.Parent = self.MainFrame
+
+	self.ClaimButton.MouseButton1Click:Connect(function()
+		if self.CurrentQuestId then
+			self.OnQuestClaimed:Fire(self.CurrentQuestId)
+		end
+	end)
 end
 
 function QuestDialogView:ShowNPC(npcId: string, npcName: string, dialogText: string, questConfig: table?)
+	print(`[QuestDialogView] ShowNPC invocado | NPC: {npcName} ({npcId}) | Misión disponible: {questConfig and questConfig.Id or "Ninguna"}`)
 	self.CurrentNPCId = npcId
 	self.NPCTitle.Text = string.upper(npcName or npcId)
 	self.DialogText.Text = dialogText or "Hola, viajero."
+
+	self.ClaimButton.Visible = false
 
 	if questConfig then
 		self.CurrentQuestId = questConfig.Id
@@ -101,9 +128,27 @@ function QuestDialogView:ShowNPC(npcId: string, npcName: string, dialogText: str
 	self:Toggle(true)
 end
 
+function QuestDialogView:ShowClaimDialog(npcId: string, npcName: string, dialogText: string, questConfig: table)
+	print(`[QuestDialogView] ShowClaimDialog invocado | NPC: {npcName} ({npcId}) | Reclamando: {questConfig.Id}`)
+	self.CurrentNPCId = npcId
+	self.CurrentQuestId = questConfig.Id
+	self.NPCTitle.Text = string.upper(npcName or npcId)
+	self.DialogText.Text = dialogText or "¡Excelente trabajo!"
+
+	self.QuestTitle.Text = questConfig.Title or "Misión Completada"
+	self.QuestDesc.Text = questConfig.Description or ""
+
+	self.AcceptButton.Visible = false
+	self.ClaimButton.Visible = true
+
+	self:Toggle(true)
+end
+
 function QuestDialogView:Toggle(visible: boolean?)
 	self.IsOpen = if visible ~= nil then visible else not self.IsOpen
 	self.MainFrame.Visible = self.IsOpen
+	self.ScreenGui.Enabled = self.IsOpen
+	print(`[QuestDialogView] Estado del menú de diálogo cambiado -> Visible: {self.IsOpen}`)
 end
 
 return QuestDialogView

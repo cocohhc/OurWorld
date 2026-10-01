@@ -4,15 +4,15 @@ local Zone1Quests: { [string]: QuestTypes.Quest } = {
 	["Q_Z1_001"] = {
 		Id = "Q_Z1_001",
 		Title = "El Despertar",
-		Description = "Habla con el anciano del pueblo para recibir tus primeras instrucciones.",
+  		Description = "En el pueblo estan llegando unos bandidos a perturbar y a saquear el ancioano te pidio que te encargues de ellos.",
 		Zone = "Zone1",
 		PrerequisiteQuestId = nil,
 		Objectives = {
 			{
-				Type = "Interact",
-				TargetId = "NPC_Anciano",
-				RequiredAmount = 1,
-				Description = "Habla con el Anciano",
+				Type = "Kill",
+				TargetId = "Bandido", -- Corregido para coincidir con el Attribute NPCId del Workspace
+				RequiredAmount = 5,
+				Description = "Mata 5 NPCs",
 			},
 		},
 		Rewards = {

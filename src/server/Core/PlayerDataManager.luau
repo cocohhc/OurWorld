@@ -6,7 +6,7 @@ local Knit = require(Packages.Knit)
 
 local ProfileService = require(script.Parent:WaitForChild("ProfileService"))
 
-local MAX_SLOTS = 4
+local MAX_SLOTS = 10
 
 local PROFILE_TEMPLATE = {
 	ActiveSlotId = nil,
@@ -14,13 +14,12 @@ local PROFILE_TEMPLATE = {
 }
 
 local ProfileStore = ProfileService.GetProfileStore(
-	"WhishGo_MultiSlot_v2",
+	"WhishGo_MultiSlot_v9",
 	PROFILE_TEMPLATE
 )
 
 local Profiles = {}
 
--- 🚀 CONVERTIDO A SERVICIO DE KNIT PARA QUE Knit.GetService LO RECONOZCA
 local PlayerDataManager = Knit.CreateService({
 	Name = "PlayerDataManager",
 	Client = {},
@@ -95,6 +94,11 @@ function PlayerDataManager:CreateCharacterSlot(player: Player, className: string
 		Gold = 0,
 		Inventory = {},
 		CreatedAt = os.time(),
+		-- ESTRUCTURA DE MISIONES POR PERSONAJE / SLOT
+		Quests = {
+			Active = {},
+			Completed = {},
+		},
 	}
 
 	table.insert(profile.Data.Slots, newSlot)
@@ -123,13 +127,20 @@ function PlayerDataManager:GetActiveSlot(player: Player)
 
 	for _, slot in ipairs(profile.Data.Slots) do
 		if slot.Id == profile.Data.ActiveSlotId then
+			-- Asegurar tabla Quests en slots antiguos
+			slot.Quests = slot.Quests or { Active = {}, Completed = {} }
+			slot.Quests.Active = slot.Quests.Active or {}
+			slot.Quests.Completed = slot.Quests.Completed or {}
 			return slot
 		end
 	end
 	return nil
 end
 
--- 🚀 Método requerido por InventoryService para guardar ítems en la ranura activa
+function PlayerDataManager:GetProfile(player: Player)
+	return self:WaitForProfile(player)
+end
+
 function PlayerDataManager:AddItemToActiveSlot(player: Player, itemId: string)
 	local activeSlot = self:GetActiveSlot(player)
 	if activeSlot then
@@ -142,12 +153,10 @@ function PlayerDataManager:AddItemToActiveSlot(player: Player, itemId: string)
 	return false
 end
 
--- En PlayerDataManager.luau:
 function PlayerDataManager:MoveItemSlot(player: Player, fromSlot: number, toSlot: number)
 	local activeSlot = self:GetActiveSlot(player)
 	if not activeSlot or not activeSlot.Inventory then return false end
 
-	-- Intercambiar o mover los ítems entre las casillas especificadas
 	local itemAtFrom = activeSlot.Inventory[tostring(fromSlot)] or activeSlot.Inventory[fromSlot]
 	local itemAtTo = activeSlot.Inventory[tostring(toSlot)] or activeSlot.Inventory[toSlot]
 

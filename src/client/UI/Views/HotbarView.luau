@@ -3,8 +3,9 @@ local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
 
-local UITheme = require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("UITheme"))
+local UITheme = require(PlayerScripts:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("UITheme"))
 
 local HotbarView = {}
 HotbarView.__index = HotbarView
@@ -15,11 +16,16 @@ function HotbarView.new(maxSlots: number?)
 	self.MaxSlots = maxSlots or 5
 	self.ScreenGui = UITheme.CreateScreenGui("HotbarGui")
 	self.ScreenGui.DisplayOrder = 10
+
+	self.ScreenGui.Enabled = false
+
 	self.Slots = {}
 	self.ActiveMenu = nil
 
 	self.OnSlotSelected = Instance.new("BindableEvent")
 	self.OnStoreRequested = Instance.new("BindableEvent")
+	self.OnItemDropped = Instance.new("BindableEvent")
+	self.OnHotbarUpdated = Instance.new("BindableEvent")
 
 	self:BuildUI()
 	self:SetupGlobalClickListener()
@@ -44,7 +50,6 @@ function HotbarView:BuildUI()
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = container
 
-	-- Asignación segura del color de texto desde el tema o blanco por defecto 🎨
 	local textColor = (UITheme.Colors and (UITheme.Colors.Text or UITheme.Colors.TextPrimary)) or Color3.fromRGB(255, 255, 255)
 	local subTextColor = (UITheme.Colors and UITheme.Colors.TextSub) or Color3.fromRGB(200, 200, 200)
 
@@ -53,7 +58,7 @@ function HotbarView:BuildUI()
 		slotCard.LayoutOrder = i
 		slotCard.Parent = container
 
-		-- Número del atajo (1-5)
+		-- Número del Atajo (1, 2, 3...)
 		local keyLabel = UITheme.CreateLabel(tostring(i), 11, true, Enum.TextXAlignment.Left)
 		keyLabel.Size = UDim2.new(0, 16, 0, 16)
 		keyLabel.Position = UDim2.new(0, 4, 0, 2)
@@ -61,30 +66,28 @@ function HotbarView:BuildUI()
 		keyLabel.ZIndex = 5
 		keyLabel.Parent = slotCard
 
-		-- Icono del ítem
+		-- Icono del Objeto
 		local itemIcon = Instance.new("ImageLabel")
 		itemIcon.Name = "ItemIcon"
-		itemIcon.Size = UDim2.new(0.7, 0, 0.7, 0)
-		itemIcon.Position = UDim2.fromScale(0.5, 0.55)
+		itemIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
+		itemIcon.Position = UDim2.new(0.5, 0, 0.4, 0)
 		itemIcon.AnchorPoint = Vector2.new(0.5, 0.5)
 		itemIcon.BackgroundTransparency = 1
 		itemIcon.Visible = false
 		itemIcon.ZIndex = 3
 		itemIcon.Parent = slotCard
 
-		-- Texto del nombre del ítem
-		local nameLabel = UITheme.CreateLabel("", 10, true, Enum.TextXAlignment.Center)
+		-- Etiqueta del Nombre del Objeto (Ubicada en la parte inferior para visibilidad clara)
+		local nameLabel = UITheme.CreateLabel("", 9, true, Enum.TextXAlignment.Center)
 		nameLabel.Name = "ItemNameLabel"
-		nameLabel.Size = UDim2.new(0.9, 0, 0.5, 0)
-		nameLabel.Position = UDim2.fromScale(0.5, 0.55)
-		nameLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+		nameLabel.Size = UDim2.new(1, -4, 0, 14)
+		nameLabel.Position = UDim2.new(0, 2, 1, -16)
 		nameLabel.TextColor3 = textColor
-		nameLabel.TextWrapped = true
+		nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 		nameLabel.Visible = false
-		nameLabel.ZIndex = 4
+		nameLabel.ZIndex = 5
 		nameLabel.Parent = slotCard
 
-		-- Botón transparente para clics
 		local button = Instance.new("TextButton")
 		button.Size = UDim2.fromScale(1, 1)
 		button.BackgroundTransparency = 1
@@ -96,7 +99,9 @@ function HotbarView:BuildUI()
 			Frame = slotCard,
 			Icon = itemIcon,
 			NameLabel = nameLabel,
+			RealSlot = i,
 			Data = nil,
+			Clicker = button,
 		}
 
 		button.MouseButton1Click:Connect(function()
@@ -108,6 +113,12 @@ function HotbarView:BuildUI()
 				self:OpenContextMenu(i, slotCard)
 			end
 		end)
+	end
+end
+
+function HotbarView:SetVisible(visible: boolean)
+	if self.ScreenGui then
+		self.ScreenGui.Enabled = visible
 	end
 end
 
@@ -142,12 +153,14 @@ function HotbarView:UpdateSlot(slotIndex: number, itemData: table?)
 		if hasIcon then
 			slot.Icon.Image = itemData.Icon
 			slot.Icon.Visible = true
-			slot.NameLabel.Visible = false
 		else
 			slot.Icon.Visible = false
-			slot.NameLabel.Text = itemData.Name or "Objeto"
-			slot.NameLabel.Visible = true
+			slot.Icon.Image = ""
 		end
+
+		-- Mostrar el nombre siempre que exista el dato del ítem
+		slot.NameLabel.Text = itemData.Name or "Objeto"
+		slot.NameLabel.Visible = true
 	else
 		slot.Icon.Visible = false
 		slot.Icon.Image = ""
@@ -191,16 +204,25 @@ end
 function HotbarView:SetupGlobalClickListener()
 	UserInputService.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
-			-- Cierra el menú contextual al hacer clic fuera
+			-- Cierra el menú contextual si se requiere
 		end
 	end)
 end
 
 function HotbarView:SetHotbarData(hotbarItems: table)
 	self:CloseContextMenu()
-	for i = 1, self.MaxSlots do
-		self:UpdateSlot(i, hotbarItems[i])
+
+	if type(hotbarItems) ~= "table" then
+		hotbarItems = {}
 	end
+
+	for i = 1, self.MaxSlots do
+		-- Sombra/Fallback para acceder tanto por entero (1) como por cadena ("1")
+		local itemData = hotbarItems[i] or hotbarItems[tostring(i)]
+		self:UpdateSlot(i, itemData)
+	end
+
+	self.OnHotbarUpdated:Fire()
 end
 
 function HotbarView:Destroy()
@@ -208,6 +230,7 @@ function HotbarView:Destroy()
 	if self.ScreenGui then self.ScreenGui:Destroy() end
 	if self.OnSlotSelected then self.OnSlotSelected:Destroy() end
 	if self.OnStoreRequested then self.OnStoreRequested:Destroy() end
+	if self.OnItemDropped then self.OnItemDropped:Destroy() end
 end
 
 return HotbarView

@@ -6,7 +6,7 @@ local UITheme = {}
 UITheme.Colors = {
 	BackgroundDark = Color3.fromRGB(10, 8, 6),
 	Container = Color3.fromRGB(22, 17, 13),
-	ContainerHeader = Color3.fromRGB(45, 34, 25),
+	ContainerHeader = Color3.fromRGB(58, 42, 28), -- Color base más cálido y diferenciado
 
 	-- 🔘 Botones Básicos (Contraste súper marcado entre estados)
 	Primary = Color3.fromRGB(42, 31, 24),         -- Base
@@ -31,6 +31,8 @@ UITheme.Colors = {
 	-- 🌅 Degradados Metálicos Exagerados
 	GradientContainerTop = Color3.fromRGB(48, 36, 26),
 	GradientContainerBottom = Color3.fromRGB(10, 8, 6),
+	GradientHeaderTop = Color3.fromRGB(65, 46, 30),     -- Tono bronce/oro oscuro para contrastar
+	GradientHeaderBottom = Color3.fromRGB(36, 25, 17),  -- Tono inferior oscuro pero delimitado
 	GradientGoldTop = Color3.fromRGB(255, 225, 110),
 	GradientGoldBottom = Color3.fromRGB(190, 120, 20),
 }
@@ -124,6 +126,37 @@ function UITheme.CreateContainer(size: UDim2, position: UDim2, cornerRadius: num
 	UITheme.ApplyOrnateBorder(frame, false)
 
 	return frame
+end
+
+function UITheme.CreateHeader(titleText: string, height: number?, hasBorder: boolean?): Frame
+	local headerFrame = Instance.new("Frame")
+	headerFrame.Name = "HeaderContainer"
+	headerFrame.Size = UDim2.new(1, 0, 0, height or 30) -- Reducido a 30px por defecto
+	headerFrame.Position = UDim2.new(0, 0, 0, 0)
+	headerFrame.BackgroundColor3 = UITheme.Colors.ContainerHeader
+	headerFrame.BorderSizePixel = 0
+	headerFrame.ZIndex = 4
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = headerFrame
+
+	-- Degradado exclusivo de Header con contraste diferenciado del contenedor
+	UITheme.ApplyLinearGradient(headerFrame, UITheme.Colors.GradientHeaderTop, UITheme.Colors.GradientHeaderBottom, 90)
+
+	-- Aplica el borde ornamentado solo si hasBorder es true (o no se especifica, por defecto true)
+	if hasBorder == nil or hasBorder == true then
+		UITheme.ApplyOrnateBorder(headerFrame, false)
+	end
+
+	if titleText and titleText ~= "" then
+		local titleLabel = UITheme.CreateLabel(titleText, 15, true, Enum.TextXAlignment.Left)
+		titleLabel.Size = UDim2.new(1, -20, 1, 0)
+		titleLabel.Position = UDim2.new(0, 10, 0, 0)
+		titleLabel.Parent = headerFrame
+	end
+
+	return headerFrame
 end
 
 function UITheme.CreateButton(text: string, size: UDim2, isAccent: boolean?): TextButton

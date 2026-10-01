@@ -1,11 +1,13 @@
+local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
 
-local UITheme = require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("UITheme"))
+local UITheme = require(PlayerScripts:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("UITheme"))
 
 local InventoryView = {}
 InventoryView.__index = InventoryView
@@ -20,9 +22,10 @@ function InventoryView.new(maxSlots: number?)
 	self.SelectedItem = nil
 	self.SelectedSlotIndex = nil
 	self.Slots = {}
+	self.HotbarReference = nil
 
 	-- Estado del Arrastre (Drag & Drop)
-	self.DraggingSlot = nil
+	self.DraggingRealSlot = nil
 	self.DragGhost = nil
 	self.IsDragging = false
 	self.DragStartPos = Vector2.zero
@@ -32,9 +35,39 @@ function InventoryView.new(maxSlots: number?)
 
 	self:BuildUI()
 	self:SetupGlobalDragListeners()
-	
+
 	self.ScreenGui.Parent = PlayerGui
 	return self
+end
+
+function InventoryView:SetHotbarReference(hotbarView)
+	self.HotbarReference = hotbarView
+	self:BindHotbarDragEvents()
+
+	-- Re-vincular eventos de drag cuando la Hotbar actualice sus datos
+	if hotbarView.OnHotbarUpdated then
+		hotbarView.OnHotbarUpdated.Event:Connect(function()
+			self:BindHotbarDragEvents()
+		end)
+	end
+end
+
+function InventoryView:BindHotbarDragEvents()
+	if not self.HotbarReference or not self.HotbarReference.Slots then return end
+
+	for _, hotbarSlot in ipairs(self.HotbarReference.Slots) do
+		if hotbarSlot.Clicker and not hotbarSlot._hasDragBound then
+			hotbarSlot._hasDragBound = true
+			hotbarSlot.Clicker.MouseButton1Down:Connect(function()
+				if hotbarSlot.Data then
+					self.DraggingRealSlot = hotbarSlot.RealSlot
+					local mousePos = UserInputService:GetMouseLocation()
+					self.DragStartPos = Vector2.new(mousePos.X, mousePos.Y)
+					print(`🔍 [DRAG HOTBAR] Click sobre Slot Hotbar #{hotbarSlot.RealSlot} ({hotbarSlot.Data.Name or 'Objeto'})`)
+				end
+			end)
+		end
+	end
 end
 
 function InventoryView:BuildUI()
@@ -70,53 +103,63 @@ function InventoryView:BuildUI()
 	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	gridLayout.Parent = gridContainer
 
-	-- Colores seguros con fallback 🎨
 	local mainTextColor = (UITheme.Colors and (UITheme.Colors.TextMain or UITheme.Colors.Text or UITheme.Colors.TextPrimary)) or Color3.fromRGB(255, 255, 255)
 	local subTextColor = (UITheme.Colors and (UITheme.Colors.TextSub or UITheme.Colors.SubText)) or Color3.fromRGB(180, 180, 180)
 
-	for i = 1, self.MaxSlots do
+for i = 1, self.MaxSlots do
 		local slotCard = UITheme.CreateContainer(UDim2.fromOffset(56, 56))
 		slotCard.Parent = gridContainer
 
 		local itemIcon = Instance.new("ImageLabel")
 		itemIcon.Name = "ItemIcon"
-		itemIcon.Size = UDim2.new(0.75, 0, 0.75, 0)
-		itemIcon.Position = UDim2.fromScale(0.5, 0.5)
+		itemIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
+		itemIcon.Position = UDim2.new(0.5, 0, 0.4, 0)
 		itemIcon.AnchorPoint = Vector2.new(0.5, 0.5)
 		itemIcon.BackgroundTransparency = 1
 		itemIcon.Visible = false
 		itemIcon.ZIndex = 2
 		itemIcon.Parent = slotCard
 
+		local nameLabel = UITheme.CreateLabel("", 9, true, Enum.TextXAlignment.Center)
+		nameLabel.Name = "ItemNameLabel"
+		nameLabel.Size = UDim2.new(1, -4, 0, 14)
+		nameLabel.Position = UDim2.new(0, 2, 1, -16)
+		nameLabel.TextColor3 = mainTextColor
+		nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+		nameLabel.Visible = false
+		nameLabel.ZIndex = 3
+		nameLabel.Parent = slotCard
+
 		local countLabel = UITheme.CreateLabel("", 11, false, Enum.TextXAlignment.Right)
 		countLabel.Name = "CountLabel"
 		countLabel.Size = UDim2.new(1, -4, 0, 12)
 		countLabel.Position = UDim2.new(0, 0, 1, -14)
 		countLabel.TextColor3 = mainTextColor
-		countLabel.ZIndex = 3
+		countLabel.ZIndex = 4
 		countLabel.Parent = slotCard
 
 		local clicker = Instance.new("TextButton")
 		clicker.Size = UDim2.fromScale(1, 1)
 		clicker.BackgroundTransparency = 1
 		clicker.Text = ""
-		clicker.ZIndex = 4
+		clicker.ZIndex = 5
 		clicker.Parent = slotCard
 
 		self.Slots[i] = {
 			Frame = slotCard,
 			Icon = itemIcon,
+			NameLabel = nameLabel,
 			Count = countLabel,
-			RealSlot = i + 5, -- Mapeo real del slot (6 a 29) 🎒
+			RealSlot = i + 5,
 			Data = nil,
 		}
 
-		-- Conectar la presión del botón
 		clicker.MouseButton1Down:Connect(function()
 			if self.Slots[i].Data then
-				self.DraggingSlot = i
+				self.DraggingRealSlot = self.Slots[i].RealSlot
 				local mousePos = UserInputService:GetMouseLocation()
 				self.DragStartPos = Vector2.new(mousePos.X, mousePos.Y)
+				print(`🔍 [DRAG MOCHILA] Click sobre Slot Global #{self.Slots[i].RealSlot} ({self.Slots[i].Data.Name or 'Objeto'})`)
 			end
 		end)
 	end
@@ -142,7 +185,6 @@ function InventoryView:BuildUI()
 	self.ActionButton.Visible = false
 	self.ActionButton.Parent = detailsPanel
 
-	-- Al presionar el botón lateral, enviamos la orden con la casilla real ⚡
 	self.ActionButton.MouseButton1Click:Connect(function()
 		if self.SelectedSlotIndex then
 			local realSlot = self.Slots[self.SelectedSlotIndex].RealSlot
@@ -151,22 +193,34 @@ function InventoryView:BuildUI()
 	end)
 end
 
--- 🚀 Sistema Global de Arrastrar y Soltar (Sin bloqueos de eventos)
+function InventoryView:GetItemDataByRealSlot(realSlot: number): table?
+	if realSlot <= 5 and self.HotbarReference then
+		local slot = self.HotbarReference.Slots[realSlot]
+		return slot and slot.Data
+	elseif realSlot > 5 then
+		local invIndex = realSlot - 5
+		local slot = self.Slots[invIndex]
+		return slot and slot.Data
+	end
+	return nil
+end
+
 function InventoryView:SetupGlobalDragListeners()
 	UserInputService.InputChanged:Connect(function(input)
-		if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and self.DraggingSlot then
-			local currentPos = Vector2.new(input.Position.X, input.Position.Y)
+		if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and self.DraggingRealSlot then
+			local currentPos = UserInputService:GetMouseLocation()
+			local guiPos = currentPos - GuiService:GetGuiInset()
 			local distance = (currentPos - self.DragStartPos).Magnitude
 
-			-- Activar el icono fantasma si se mueve más de 5 píxeles manteniendo clic
 			if not self.IsDragging and distance > 5 then
 				self.IsDragging = true
 
-				local slotData = self.Slots[self.DraggingSlot].Data
+				local slotData = self:GetItemDataByRealSlot(self.DraggingRealSlot)
 				if slotData then
+					print(`📦 [DRAG INICIADO] Arrastrando desde Slot Global #{self.DraggingRealSlot}`)
 					self.DragGhost = Instance.new("ImageLabel")
 					self.DragGhost.Size = UDim2.fromOffset(48, 48)
-					self.DragGhost.Position = UDim2.fromOffset(input.Position.X - 24, input.Position.Y - 24)
+					self.DragGhost.Position = UDim2.fromOffset(guiPos.X - 24, guiPos.Y - 24)
 					self.DragGhost.BackgroundTransparency = 1
 					self.DragGhost.Image = slotData.Icon or ""
 					self.DragGhost.Active = false
@@ -180,51 +234,77 @@ function InventoryView:SetupGlobalDragListeners()
 			end
 
 			if self.IsDragging and self.DragGhost then
-				self.DragGhost.Position = UDim2.fromOffset(input.Position.X - 26, input.Position.Y - 26)
+				self.DragGhost.Position = UDim2.fromOffset(guiPos.X - 26, guiPos.Y - 26)
 			end
 		end
 	end)
 
 	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			if self.DraggingSlot then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 or input.UserInputType == Enum.UserInputType.Touch then
+			if self.DraggingRealSlot then
 				if self.IsDragging then
-					-- Finalizar Arrastre
-					local mousePos = Vector2.new(input.Position.X, input.Position.Y)
-					local targetSlotIndex = self:GetSlotAtPosition(mousePos)
+					local mousePos = UserInputService:GetMouseLocation()
+					local realToSlot = self:GetRealSlotAtPosition(mousePos)
 
-					if targetSlotIndex and targetSlotIndex ~= self.DraggingSlot then
-						local realFrom = self.Slots[self.DraggingSlot].RealSlot
-						local realTo = self.Slots[targetSlotIndex].RealSlot
-						self.OnItemDropped:Fire(realFrom, realTo)
+					if realToSlot and realToSlot ~= self.DraggingRealSlot then
+						self.OnItemDropped:Fire(self.DraggingRealSlot, realToSlot)
+					else
+						warn(`⚠️ [DRAG CANCELADO] Soltado fuera de una casilla válida o en el mismo slot.`)
 					end
 				else
-					-- Fue un clic rápido sin arrastre
-					self:SelectItem(self.DraggingSlot)
+					if self.DraggingRealSlot > 5 then
+						self:SelectItem(self.DraggingRealSlot - 5)
+					end
 				end
 			end
 
-			-- Limpiar estado
 			if self.DragGhost then
 				self.DragGhost:Destroy()
 				self.DragGhost = nil
 			end
-			self.DraggingSlot = nil
+			self.DraggingRealSlot = nil
 			self.IsDragging = false
 		end
 	end)
 end
 
-function InventoryView:GetSlotAtPosition(screenPos: Vector2): number?
-	for index, slot in ipairs(self.Slots) do
-		local absPos = slot.Frame.AbsolutePosition
-		local absSize = slot.Frame.AbsoluteSize
+function InventoryView:GetRealSlotAtPosition(screenPos: Vector2): number?
+	local guiPos = screenPos - GuiService:GetGuiInset()
 
-		if screenPos.X >= absPos.X and screenPos.X <= (absPos.X + absSize.X) and
-		   screenPos.Y >= absPos.Y and screenPos.Y <= (absPos.Y + absSize.Y) then
-			return index
+	-- 1. Evaluar casillas de la Mochila
+	local isMochilaVisible = self.IsOpen or (self.MainFrame and self.MainFrame.Visible)
+	if isMochilaVisible then
+		for index, slot in ipairs(self.Slots) do
+			if slot.Frame and slot.Frame.Visible then
+				local absPos = slot.Frame.AbsolutePosition
+				local absSize = slot.Frame.AbsoluteSize
+
+				if guiPos.X >= absPos.X and guiPos.X <= (absPos.X + absSize.X) and
+				   guiPos.Y >= absPos.Y and guiPos.Y <= (absPos.Y + absSize.Y) then
+					return slot.RealSlot
+				end
+			end
 		end
 	end
+
+	-- 2. Evaluar casillas de la Hotbar
+	if self.HotbarReference and self.HotbarReference.Slots then
+		local isHotbarVisible = not self.HotbarReference.ScreenGui or self.HotbarReference.ScreenGui.Enabled
+		if isHotbarVisible then
+			for index, slot in ipairs(self.HotbarReference.Slots) do
+				if slot.Frame and slot.Frame.Visible then
+					local absPos = slot.Frame.AbsolutePosition
+					local absSize = slot.Frame.AbsoluteSize
+
+					if guiPos.X >= absPos.X and guiPos.X <= (absPos.X + absSize.X) and
+					   guiPos.Y >= absPos.Y and guiPos.Y <= (absPos.Y + absSize.Y) then
+						return slot.RealSlot
+					end
+				end
+			end
+		end
+	end
+
 	return nil
 end
 
@@ -284,21 +364,41 @@ function InventoryView:ClearHighlights()
 end
 
 function InventoryView:SetItems(itemList: table)
+
 	for i = 1, self.MaxSlots do
-		-- 🔍 Leemos directamente 'i' porque el servidor ya envía la lista del 1 al 24
-		local itemData = itemList[i] 
+		-- Fallback para acceder tanto por entero (i) como por string (tostring(i)) debido a la serialización de arrays dispersos
+		local itemData = itemList and (itemList[i] or itemList[tostring(i)])
 		local slot = self.Slots[i]
 
-		slot.Data = itemData
-		if itemData then
-			slot.Icon.Image = itemData.Icon or ""
-			slot.Icon.Visible = true
+		if not slot then continue end
+
+		if itemData and (itemData.Name and itemData.Name ~= "" or itemData.Id) then
+			slot.Data = itemData
+			local iconTexture = itemData.Icon or itemData.Texture or itemData.Image or ""
+
+			slot.Icon.Image = iconTexture
+			slot.Icon.Visible = (iconTexture ~= "")
+			if slot.NameLabel then
+				slot.NameLabel.Text = itemData.Name or itemData.Id or "Objeto"
+				slot.NameLabel.Visible = true
+			end
 			slot.Count.Text = if itemData.Amount and itemData.Amount > 1 then tostring(itemData.Amount) else ""
+
 		else
-			slot.Icon.Visible = false
+			slot.Data = nil
 			slot.Icon.Image = ""
+			slot.Icon.Visible = false
+			if slot.NameLabel then
+				slot.NameLabel.Text = ""
+				slot.NameLabel.Visible = false
+			end
 			slot.Count.Text = ""
 		end
+	end
+
+	-- Deseleccionar si la casilla seleccionada actualmente quedó vacía
+	if self.SelectedSlotIndex and not self.Slots[self.SelectedSlotIndex].Data then
+		self:SelectItem(0)
 	end
 end
 

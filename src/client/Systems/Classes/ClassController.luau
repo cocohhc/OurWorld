@@ -4,10 +4,13 @@ local ContentProvider = game:GetService("ContentProvider")
 local ContextActionService = game:GetService("ContextActionService")
 
 local Packages = ReplicatedStorage.Packages
-local Knit = require(ReplicatedStorage.Packages.Knit)
-local ClassSelectionView = require(Players.LocalPlayer.PlayerScripts.Client.UI.Views.ClassSelectionView)
+local Knit = require(Packages.Knit)
 
 local LocalPlayer = Players.LocalPlayer
+local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
+local ViewsFolder = PlayerScripts:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Views")
+local ClassSelectionView = require(ViewsFolder:WaitForChild("ClassSelectionView"))
+
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 local ACTION_FREEZE = "DisableMovementForUI"
@@ -17,7 +20,7 @@ local ClassController = Knit.CreateController({
 })
 
 function ClassController:KnitStart()
-	print("[ClassController] Iniciando selector multiranura...")
+	print("🧙‍♂️ [ClassController] Iniciando selector multiranura...")
 	self:InitializeSelectionFlow()
 end
 
@@ -50,11 +53,11 @@ function ClassController:InitializeSelectionFlow()
 	-- 1. Obtenemos el servicio remoto de Knit
 	local ClassService = Knit.GetService("ClassService")
 
-	-- 2. Llamamos al método expuesto en el servidor (usando los Promises de Knit)
+	-- 2. Llamamos al método expuesto en el servidor
 	ClassService:GetCharacterSlots():andThen(function(slots)
 		view:SetCharacterSlots(slots or {})
 	end):catch(function(err)
-		warn("[ClassController] Error al obtener las ranuras del personaje:", err)
+		warn("⚠️ [ClassController] Error al obtener las ranuras del personaje:", err)
 	end)
 
 	-- Evento 1: Cargar Personaje Guardado Existente
@@ -81,23 +84,29 @@ end
 function ClassController:StartWorldPreload(view)
 	local isSkipped = false
 
-    local function completeLoad()
+	local function completeLoad()
+		if isSkipped then return end
+		isSkipped = true
+
 		view:Destroy()
 		self:UnfreezePlayer()
 
-		-- 🚀 MONTAR LA UI Y JALAR EL INVENTARIO AL FINALIZAR LA CARGA
+		-- 🚀 REVELAR INVENTARIO Y HOTBAR TRAS COMPLETAR LA CARGA E INGRESAR AL MUNDO
 		local InventoryController = Knit.GetController("InventoryController")
 		if InventoryController then
 			InventoryController:MountUI()
+			InventoryController:ShowHotbar()
 		end
 
-		print("[ClassController] Jugador ingresó al juego correctamente.")
+		print("✅ [ClassController] Jugador ingresó al juego correctamente.")
 	end
 
 	local skipConnection
 	skipConnection = view.OnSkipLoading.Event:Connect(function()
-		isSkipped = true
-		if skipConnection then skipConnection:Disconnect() end
+		if skipConnection then
+			skipConnection:Disconnect()
+			skipConnection = nil
+		end
 		completeLoad()
 	end)
 
@@ -111,27 +120,45 @@ function ClassController:StartWorldPreload(view)
 		local instancesToPreload = {}
 		for _, parent in ipairs(assetsToLoad) do
 			for _, child in ipairs(parent:GetDescendants()) do
-				if child:IsA("BasePart") or child:IsA("Decal") or child:IsA("Sound") or child:IsA("MeshPart") then
+				if child:IsA("BasePart") or child:IsA("Decal") or child:IsA("Sound") or child:IsA("MeshPart") or child:IsA("Texture") then
 					table.insert(instancesToPreload, child)
 				end
 			end
 		end
 
 		local total = #instancesToPreload
-		if total == 0 then total = 1 end
+		if total == 0 then
+			view:UpdateProgress(1)
+			if skipConnection then skipConnection:Disconnect() end
+			completeLoad()
+			return
+		end
 
-		for index, instance in ipairs(instancesToPreload) do
+		-- Carga por lotes para no ralentizar el hilo de la UI
+		local batchSize = 10
+		for i = 1, total, batchSize do
 			if isSkipped then break end
 
-			ContentProvider:PreloadAsync({ instance })
-			local progress = index / total
+			local batch = {}
+			for j = i, math.min(i + batchSize - 1, total) do
+				table.insert(batch, instancesToPreload[j])
+			end
+
+			pcall(function()
+				ContentProvider:PreloadAsync(batch)
+			end)
+
+			local progress = math.min(i + batchSize - 1, total) / total
 			view:UpdateProgress(progress)
 
-			task.wait()
+			task.wait(0.03)
 		end
 
 		if not isSkipped then
-			if skipConnection then skipConnection:Disconnect() end
+			if skipConnection then
+				skipConnection:Disconnect()
+				skipConnection = nil
+			end
 			completeLoad()
 		end
 	end)

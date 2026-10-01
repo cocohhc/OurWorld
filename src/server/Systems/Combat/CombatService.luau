@@ -9,16 +9,14 @@ local ItemData = require(sharedInventory:WaitForChild("ItemData"))
 local CombatService = Knit.CreateService({
 	Name = "CombatService",
 	Client = {
-		-- Definir evento de RemoteSignal para que el cliente solicite el ataque
 		AttackRequested = Knit.CreateSignal(),
 	},
 })
 
--- Cooldowns para prevenir spam/exploits
 local playerCooldowns = {}
 
 function CombatService:KnitStart()
-	print("[CombatService] Servicio de combate iniciado.")
+	print("⚔️ [CombatService] Servicio de combate iniciado.")
 
 	self.Client.AttackRequested:Connect(function(player, weaponId)
 		self:ExecuteAttack(player, weaponId)
@@ -46,7 +44,7 @@ function CombatService:ExecuteAttack(player: Player, weaponId: string)
 	local rootPart = character.HumanoidRootPart
 	local hitboxSize = weaponConfig.HitboxSize or Vector3.new(5, 5, 5)
 	local offset = weaponConfig.HitboxOffset or 4
-	local attackDuration = 0.25 -- Ventana de tiempo en la que el golpe está activo
+	local attackDuration = 0.25
 
 	local overlapParams = OverlapParams.new()
 	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -56,15 +54,14 @@ function CombatService:ExecuteAttack(player: Player, weaponId: string)
 	local hitHumanoids = {}
 	local startTime = os.clock()
 
-	-- Bucle de detección activa (Sigue al jugador mientras ataca)
+	-- Bucle de detección activa durante el golpe
 	task.spawn(function()
 		while (os.clock() - startTime) < attackDuration do
 			if not character or not rootPart.Parent then break end
 
-			-- La CFrame se recalcula en CADA iteración basada en la posición actual
 			local currentHitboxCFrame = rootPart.CFrame * CFrame.new(0, 0, -offset)
 
-			-- Visualización rápida
+			-- Visualización de la hitbox
 			self:VisualizeHitbox(currentHitboxCFrame, hitboxSize)
 
 			-- Detectar impactos
@@ -77,18 +74,29 @@ function CombatService:ExecuteAttack(player: Player, weaponId: string)
 
 					if enemyHumanoid and enemyHumanoid.Health > 0 and not hitHumanoids[enemyHumanoid] then
 						hitHumanoids[enemyHumanoid] = true
-						enemyHumanoid:TakeDamage(weaponConfig.Damage or 10)
-						print(`💥 [COMBATE] {player.Name} infligió {weaponConfig.Damage} de daño a {enemyModel.Name}!`)
+
+						-- Aplicar etiqueta del atacante para reconocimiento en EnemyService
+						local creatorTag = enemyHumanoid:FindFirstChild("creator")
+						if not creatorTag then
+							creatorTag = Instance.new("ObjectValue")
+							creatorTag.Name = "creator"
+							creatorTag.Parent = enemyHumanoid
+						end
+						creatorTag.Value = player
+
+						local damage = weaponConfig.Damage or 10
+						enemyHumanoid:TakeDamage(damage)
+						print(`💥 [COMBATE] {player.Name} infligió {damage} de daño a {enemyModel.Name}!`)
 					end
 				end
 			end
 
-			task.wait(0.05) -- Comprobación cada 50ms durante el ataque
+			task.wait(0.05)
 		end
 	end)
 end
 
--- Muestra una caja roja en el mapa que se desvanece rápido
+-- Muestra la caja de colisión temporal
 function CombatService:VisualizeHitbox(cframe: CFrame, size: Vector3)
 	local box = Instance.new("Part")
 	box.Size = size
