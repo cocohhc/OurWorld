@@ -2,6 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local Knit = require(ReplicatedStorage.Packages.Knit)
 
@@ -12,7 +13,14 @@ local EnemyService = Knit.CreateService({
 
 function EnemyService:KnitStart()
 	self.QuestService = Knit.GetService("QuestService")
+	self.EnemyAIService = Knit.GetService("EnemyAIService")
 	self.Templates = {} -- Caché en memoria para los enemigos registrados en Workspace
+	self.PreClonedEnemies = {} -- [NUEVO] Cola de clones preparados para evitar lag
+
+	-- [NUEVO] Carpeta oculta para almacenar pre-clones inactivos
+	self.EnemyCacheFolder = Instance.new("Folder")
+	self.EnemyCacheFolder.Name = "EnemyPreClones"
+	self.EnemyCacheFolder.Parent = ServerStorage
 
 	local npcsFolder = Workspace:WaitForChild("NPCs", 10)
 	if not npcsFolder then
@@ -44,6 +52,20 @@ function EnemyService:KnitStart()
 	print("👾 [EnemyService] Gestor centralizado de enemigos activado (Escaneo recursivo de zonas).")
 end
 
+-- [NUEVO] Estrategia de rendimiento: Clona el siguiente NPC en segundo plano
+-- Esto absorbe el impacto de rendimiento del Clone() antes de que se necesite el respawn
+function EnemyService:PreCloneEnemy(enemyName: string)
+	self.PreClonedEnemies[enemyName] = self.PreClonedEnemies[enemyName] or {}
+
+	local template = self.Templates[enemyName]
+	if not template then return end
+
+	local clone = template:Clone()
+	clone:SetAttribute("Registered", nil)
+	clone.Parent = self.EnemyCacheFolder
+	table.insert(self.PreClonedEnemies[enemyName], clone)
+end
+
 function EnemyService:RegisterEnemy(enemyModel: Model)
 	local humanoid = enemyModel:FindFirstChildOfClass("Humanoid")
 	if not humanoid or enemyModel:GetAttribute("Registered") then return end
@@ -55,6 +77,7 @@ function EnemyService:RegisterEnemy(enemyModel: Model)
 	end
 
 	enemyModel:SetAttribute("Registered", true)
+	humanoid.BreakJointsOnDeath = false -- Evita la explosión de físicas nativa de Roblox
 
 	-- Guardar plantilla en memoria si aún no existe
 	self.Templates = self.Templates or {}
@@ -84,7 +107,31 @@ function EnemyService:RegisterEnemy(enemyModel: Model)
 
 	print(`✅ [EnemyService] Enemigo registrado: '{enemyName}' en {parentFolder:GetFullName()}`)
 
-	humanoid.Died:Connect(function()
+	if self.EnemyAIService then
+		self.EnemyAIService:RegisterEnemy(enemyModel, targetId)
+	end
+
+	-- [SOLUCIÓN FIX]: Usar :Once() y un flag "IsDead" evita que el evento se dispare
+	-- múltiples veces por frame al colapsar las físicas.
+	humanoid.Died:Once(function()
+		if enemyModel:GetAttribute("IsDead") then return end
+		enemyModel:SetAttribute("IsDead", true)
+
+		-- 1. Detener la IA inmediatamente
+		if self.EnemyAIService then
+			self.EnemyAIService:UnregisterEnemy(enemyModel)
+		end
+
+		-- 2. Efecto de Caída "Ragdoll": Colapso mediante físicas nativas
+		humanoid.PlatformStand = true
+		humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
+		local hrp = enemyModel:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			hrp.CanCollide = false -- Quita colisión al HRP para que el cuerpo no se quede de pie
+		end
+
+		-- 3. Registrar Misión
 		local creatorTag = humanoid:FindFirstChild("creator")
 		local playerWhoKilled = creatorTag and creatorTag.Value
 
@@ -93,18 +140,21 @@ function EnemyService:RegisterEnemy(enemyModel: Model)
 			if self.QuestService then
 				self.QuestService:RegisterKill(playerWhoKilled, targetId)
 			end
-		else
-			print(`💀 [EnemyService] {enemyName} ha muerto.`)
 		end
 
-		-- Limpieza del cadáver
-		task.delay(2, function()
+		-- 4. Preparar silenciosamente el clon del respawn mientras el cadáver reposa
+		task.defer(function()
+			self:PreCloneEnemy(enemyName)
+		end)
+
+		-- 5. Limpiar el cadáver tras 3 segundos de reposo en el suelo
+		task.delay(3, function()
 			if enemyModel and enemyModel.Parent then
 				enemyModel:Destroy()
 			end
 		end)
 
-		-- Reaparición (Respawn)
+		-- 6. Reaparición usando el caché preparado
 		task.delay(respawnTime, function()
 			print(`⏳ [EnemyService] Iniciando respawn de '{enemyName}'...`)
 			self:SpawnEnemy(enemyName, spawnCFrame, parentFolder)
@@ -113,41 +163,40 @@ function EnemyService:RegisterEnemy(enemyModel: Model)
 end
 
 function EnemyService:SpawnEnemy(enemyName: string, spawnCFrame: CFrame, parentFolder: Instance)
-	-- 1. Intentar obtener la plantilla desde el caché interno
-	local template: Model? = self.Templates and self.Templates[enemyName]
+	local newEnemy = nil
 
-	-- 2. Búsqueda secundaria en ServerStorage si no está en caché
-	if not template then
-		local directFolders = { ServerStorage, ServerStorage:FindFirstChild("Enemigos"), ServerStorage:FindFirstChild("NPCs") }
-		for _, folder in ipairs(directFolders) do
-			if folder then
-				local found = folder:FindFirstChild(enemyName)
-				if found and found:IsA("Model") then
-					template = found
-					break
+	-- 1. Intentar recuperar el enemigo pre-clonado desde la cola (0 lag)
+	if self.PreClonedEnemies and self.PreClonedEnemies[enemyName] and #self.PreClonedEnemies[enemyName] > 0 then
+		newEnemy = table.remove(self.PreClonedEnemies[enemyName], 1)
+	end
+
+	-- 2. Fallback: Búsqueda y clonación tradicional si falló la cola
+	if not newEnemy then
+		local template = self.Templates and self.Templates[enemyName]
+
+		if not template then
+			local directFolders = { ServerStorage, ServerStorage:FindFirstChild("Enemigos"), ServerStorage:FindFirstChild("NPCs") }
+			for _, folder in ipairs(directFolders) do
+				if folder then
+					local found = folder:FindFirstChild(enemyName)
+					if found and found:IsA("Model") then
+						template = found
+						break
+					end
 				end
 			end
 		end
-	end
 
-	-- 3. Búsqueda profunda en ServerStorage
-	if not template then
-		for _, descendant in ipairs(ServerStorage:GetDescendants()) do
-			if descendant:IsA("Model") and string.lower(descendant.Name) == string.lower(enemyName) then
-				template = descendant
-				break
-			end
+		if not template then
+			warn(`⚠️ [EnemyService] No se encontró la plantilla de '{enemyName}'.`)
+			return
 		end
+
+		newEnemy = template:Clone()
+		newEnemy:SetAttribute("Registered", nil)
 	end
 
-	if not template then
-		warn(`⚠️ [EnemyService] No se encontró la plantilla de '{enemyName}' en ServerStorage ni en caché.`)
-		return
-	end
-
-	-- Instanciar y reaparecer
-	local newEnemy = template:Clone()
-	newEnemy:SetAttribute("Registered", nil)
+	-- Mover al mundo real (Operación ultraligera)
 	newEnemy.Parent = parentFolder or Workspace:FindFirstChild("NPCs") or Workspace
 	newEnemy:PivotTo(spawnCFrame)
 
@@ -156,7 +205,7 @@ function EnemyService:SpawnEnemy(enemyName: string, spawnCFrame: CFrame, parentF
 		self:RegisterEnemy(newEnemy)
 	end)
 
-	print(`🔄 [EnemyService] '{newEnemy.Name}' ha reaparecido exitosamente en {newEnemy.Parent.Name}.`)
+	print(`🔄 [EnemyService] '{newEnemy.Name}' ha reaparecido exitosamente.`)
 end
 
 return EnemyService

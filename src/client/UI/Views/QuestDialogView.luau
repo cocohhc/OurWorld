@@ -3,6 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 local UITheme = require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("UITheme"))
+local UIDragService = require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("Components"):WaitForChild("UIDragService"))
 
 local QuestDialogView = {}
 QuestDialogView.__index = QuestDialogView
@@ -35,6 +36,9 @@ function QuestDialogView:BuildUI()
 	-- Header superior con borde (Altura reducida a 30px)
 	self.HeaderFrame = UITheme.CreateHeader("NPC", 30, true)
 	self.HeaderFrame.Parent = self.MainFrame
+
+	-- Habilitar arrastre dinámico utilizando el Header como tirador
+	UIDragService.MakeDraggable(self.MainFrame, self.HeaderFrame)
 
 	-- Referencia al TextLabel del Header para actualizaciones dinámicas de texto
 	self.NPCTitle = self.HeaderFrame:FindFirstChildOfClass("TextLabel")

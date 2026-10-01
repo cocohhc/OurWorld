@@ -41,8 +41,6 @@ SystemTester:AddTest("1. ClassService & API de Cliente", function()
 	assert(ClassService ~= nil, "ClassService no está cargado en Knit.")
 	assert(ClassService.Client ~= nil, "ClassService no tiene expuesta una tabla '.Client' para la comunicación remota.")
 
-	-- Verificación dinámica: Validamos que exista al menos un método o señal de cliente
-	-- sin forzar el nombre exacto que le hayas puesto.
 	local hasClientMethods = false
 	for _, value in pairs(ClassService.Client) do
 		if typeof(value) == "function" or typeof(value) == "table" then
@@ -60,23 +58,19 @@ SystemTester:AddTest("2. Inventory - Mapeo Estricto de Datos (Anti-Tablas Vacía
 	local InventoryService = Knit.GetService("InventoryService")
 	assert(InventoryService ~= nil, "InventoryService no está cargado en Knit.")
 
-	-- ESCENARIO TÓXICO: El servidor envía Mochila como tabla vacía, y los ítems indexados como strings en Items.
-	-- Si el Controller no comprueba si la tabla está vacía, ignorará el fallback de Items y la UI quedará en blanco.
 	local mockServerPayload = {
-		Mochila = {}, -- Trampa: Es tabla, pero está vacía.
-		Hotbar = {},  -- Trampa: Es tabla, pero está vacía.
+		Mochila = {},
+		Hotbar = {},
 		Items = {
-			["1"] = { Name = "Espada Inicial" }, -- Hotbar 1
-			["6"] = { Name = "Báculo Arcano" },  -- Mochila 1 (global 6)
-			[8] = { Name = "Poción" }            -- Mochila 3 (global 8)
+			["1"] = { Name = "Espada Inicial" },
+			["6"] = { Name = "Báculo Arcano" },
+			[8] = { Name = "Poción" }
 		}
 	}
 
 	local hotbarItems = {}
 	local mainInventoryItems = {}
 
-	-- LÓGICA CORREGIDA QUE DEBE PASAR ESTE TEST (Y LA QUE DEBES PONER EN TU CONTROLLER)
-	-- 1. Hotbar
 	if type(mockServerPayload.Hotbar) == "table" and next(mockServerPayload.Hotbar) ~= nil then
 		for key, itemData in pairs(mockServerPayload.Hotbar) do
 			local numericSlot = tonumber(key) or key
@@ -94,7 +88,6 @@ SystemTester:AddTest("2. Inventory - Mapeo Estricto de Datos (Anti-Tablas Vacía
 		end
 	end
 
-	-- 2. Mochila
 	if type(mockServerPayload.Mochila) == "table" and next(mockServerPayload.Mochila) ~= nil then
 		for key, itemData in pairs(mockServerPayload.Mochila) do
 			local numericSlot = tonumber(key)
@@ -115,7 +108,6 @@ SystemTester:AddTest("2. Inventory - Mapeo Estricto de Datos (Anti-Tablas Vacía
 		end
 	end
 
-	-- ASERCIONES FINALES
 	assert(hotbarItems[1] ~= nil and hotbarItems[1].Name == "Espada Inicial", "Fallo: Slot 1 no se mapeó a la Hotbar.")
 	assert(mainInventoryItems[1] ~= nil and mainInventoryItems[1].Name == "Báculo Arcano", "Fallo: El ítem en el slot global 6 (Items) no se mapeó a mainInventoryItems[1] porque el código se atascó en una tabla Mochila vacía.")
 	assert(mainInventoryItems[3] ~= nil and mainInventoryItems[3].Name == "Poción", "Fallo: El ítem numérico global 8 no se mapeó a mainInventoryItems[3].")
@@ -148,6 +140,50 @@ SystemTester:AddTest("5. EnemyService - Escaneo y Registro de Zonas", function()
 	assert(EnemyService ~= nil, "EnemyService no está cargado.")
 	local zone1 = Workspace:FindFirstChild("NPCs") and Workspace.NPCs:FindFirstChild("Zone1")
 	assert(zone1 ~= nil, "No se encontró 'Workspace.NPCs.Zone1' requerida por EnemyService.")
+end)
+
+---------------------------------------------------------------------------
+-- 6. SISTEMA DE IA DE ENEMIGOS E INTELIGENCIA TÁCTICA
+---------------------------------------------------------------------------
+SystemTester:AddTest("6. EnemyAIService & Módulos de IA (EnemyAIData)", function()
+	local EnemyAIService = Knit.GetService("EnemyAIService")
+	assert(EnemyAIService ~= nil, "EnemyAIService no está registrado en Knit.")
+
+	local sharedFolder = ReplicatedStorage:FindFirstChild("Shared")
+	assert(sharedFolder ~= nil, "No se encontró la carpeta 'ReplicatedStorage.Shared'")
+
+	local systemsFolder = sharedFolder:FindFirstChild("Systems")
+	assert(systemsFolder ~= nil, "No se encontró 'ReplicatedStorage.Shared.Systems'")
+
+	local npcFolder = systemsFolder:FindFirstChild("Npc")
+	assert(npcFolder ~= nil, "No se encontró 'ReplicatedStorage.Shared.Systems.Npc'")
+
+	local enemyAIData = npcFolder:FindFirstChild("EnemyAIData")
+	assert(enemyAIData ~= nil, "No se encontró el módulo 'EnemyAIData' en ReplicatedStorage.Shared.Systems.Npc")
+end)
+
+---------------------------------------------------------------------------
+-- 7. SISTEMA DE MENÚ (ACCESO RÁPIDO Y DESCONEXIÓN)
+---------------------------------------------------------------------------
+SystemTester:AddTest("7. Módulos de Menú (MenuView y MenuController)", function()
+	local StarterPlayer = game:GetService("StarterPlayer")
+	local starterScripts = StarterPlayer:FindFirstChild("StarterPlayerScripts")
+	assert(starterScripts ~= nil, "StarterPlayerScripts no existe.")
+
+	local clientFolder = starterScripts:FindFirstChild("Client")
+	assert(clientFolder ~= nil, "Carpeta Client no encontrada en StarterPlayerScripts.")
+
+	-- Validar MenuController
+	local menuController = clientFolder:FindFirstChild("Systems")
+		and clientFolder.Systems:FindFirstChild("Menu")
+		and clientFolder.Systems.Menu:FindFirstChild("MenuController")
+	assert(menuController ~= nil, "MenuController.luau no encontrado en Client/Systems/Menu/")
+
+	-- Validar MenuView
+	local menuView = clientFolder:FindFirstChild("UI")
+		and clientFolder.UI:FindFirstChild("Views")
+		and clientFolder.UI.Views:FindFirstChild("MenuView")
+	assert(menuView ~= nil, "MenuView.luau no encontrado en Client/UI/Views/")
 end)
 
 ---------------------------------------------------------------------------

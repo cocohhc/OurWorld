@@ -3,6 +3,7 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
 local UITheme = require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("UITheme"))
+local UIDragService = require(LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("Components"):WaitForChild("UIDragService"))
 
 local QuestTrackerView = {}
 QuestTrackerView.__index = QuestTrackerView
@@ -31,6 +32,9 @@ function QuestTrackerView:BuildUI()
 	-- Header superior con borde (Altura reducida a 30px)
 	self.HeaderFrame = UITheme.CreateHeader("DIARIO DE MISIONES", 30, true)
 	self.HeaderFrame.Parent = self.MainFrame
+
+	-- Habilitar el arrastre de la ventana mediante el Header o el marco
+	UIDragService.MakeDraggable(self.MainFrame, self.HeaderFrame)
 
 	-- Botón para cerrar integrado en el Header (Reducido a 18x18)
 	local closeBtn = UITheme.CreateButton("X", UDim2.fromOffset(18, 18))

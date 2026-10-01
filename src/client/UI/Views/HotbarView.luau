@@ -6,6 +6,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
 
 local UITheme = require(PlayerScripts:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("UITheme"))
+local UIDragService = require(PlayerScripts:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("Components"):WaitForChild("UIDragService"))
 
 local HotbarView = {}
 HotbarView.__index = HotbarView
@@ -42,6 +43,9 @@ function HotbarView:BuildUI()
 	container.AnchorPoint = Vector2.new(0.5, 0.5)
 	container.BackgroundTransparency = 1
 	container.Parent = self.ScreenGui
+
+	-- Habilitar el arrastre del contenedor de la Hotbar
+	UIDragService.MakeDraggable(container)
 
 	local layout = Instance.new("UIListLayout")
 	layout.FillDirection = Enum.FillDirection.Horizontal

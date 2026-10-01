@@ -45,39 +45,63 @@ function ClassController:UnfreezePlayer()
 end
 
 function ClassController:InitializeSelectionFlow()
+	print("🔄 [ClassController] Poniendo sistemas en reposo e iniciando flujo de selección...")
+
 	self:FreezePlayer()
 
-	local view = ClassSelectionView.new()
-	view:Mount(PlayerGui)
+	-- 1. Reposo UI del cliente
+	local InventoryController = Knit.GetController("InventoryController")
+	if InventoryController then
+		if typeof(InventoryController.UnmountUI) == "function" then
+			InventoryController:UnmountUI()
+		elseif typeof(InventoryController.HideHotbar) == "function" then
+			InventoryController:HideHotbar()
+		end
+	end
 
-	-- 1. Obtenemos el servicio remoto de Knit
+	-- Ocultar menú de acceso rápido al regresar a la selección
+	local MenuController = Knit.GetController("MenuController")
+	if MenuController and MenuController.MenuView then
+		MenuController.MenuView:SetVisible(false)
+	end
+
+	if self.CurrentView then
+		self.CurrentView:Destroy()
+		self.CurrentView = nil
+	end
+
 	local ClassService = Knit.GetService("ClassService")
 
-	-- 2. Llamamos al método expuesto en el servidor
-	ClassService:GetCharacterSlots():andThen(function(slots)
+	-- 2. Esperar a que el servidor termine de limpiar antes de pedir y mostrar slots
+	ClassService:DeselectCharacter():andThen(function()
+		return ClassService:GetCharacterSlots()
+	end):andThen(function(slots)
+		local view = ClassSelectionView.new()
+		self.CurrentView = view
+		view:Mount(PlayerGui)
 		view:SetCharacterSlots(slots or {})
+
+		-- Evento 1: Cargar Personaje Guardado Existente
+		view.OnSelectExistingConfirmed.Event:Connect(function(slotId: string)
+			ClassService:SelectCharacter(slotId):andThen(function(success)
+				if success then
+					view:ShowLoadingUI()
+					self:StartWorldPreload(view)
+				end
+			end):catch(warn)
+		end)
+
+		-- Evento 2: Crear Nuevo Personaje
+		view.OnCreateNewConfirmed.Event:Connect(function(className: string, subtype: string?, charName: string)
+			ClassService:CreateCharacter(className, subtype, charName):andThen(function(success)
+				if success then
+					view:ShowLoadingUI()
+					self:StartWorldPreload(view)
+				end
+			end):catch(warn)
+		end)
 	end):catch(function(err)
-		warn("⚠️ [ClassController] Error al obtener las ranuras del personaje:", err)
-	end)
-
-	-- Evento 1: Cargar Personaje Guardado Existente
-	view.OnSelectExistingConfirmed.Event:Connect(function(slotId: string)
-		ClassService:SelectCharacter(slotId):andThen(function(success)
-			if success then
-				view:ShowLoadingUI()
-				self:StartWorldPreload(view)
-			end
-		end):catch(warn)
-	end)
-
-	-- Evento 2: Crear Nuevo Personaje en nueva ranura
-	view.OnCreateNewConfirmed.Event:Connect(function(className: string, subtype: string?, charName: string)
-		ClassService:CreateCharacter(className, subtype, charName):andThen(function(success)
-			if success then
-				view:ShowLoadingUI()
-				self:StartWorldPreload(view)
-			end
-		end):catch(warn)
+		warn("⚠️ [ClassController] Error durante el flujo de inicio:", err)
 	end)
 end
 
@@ -91,11 +115,16 @@ function ClassController:StartWorldPreload(view)
 		view:Destroy()
 		self:UnfreezePlayer()
 
-		-- 🚀 REVELAR INVENTARIO Y HOTBAR TRAS COMPLETAR LA CARGA E INGRESAR AL MUNDO
+		-- 🚀 REVELAR INVENTARIO, HOTBAR Y MENÚ TRAS COMPLETAR LA CARGA E INGRESAR AL MUNDO
 		local InventoryController = Knit.GetController("InventoryController")
 		if InventoryController then
 			InventoryController:MountUI()
 			InventoryController:ShowHotbar()
+		end
+
+		local MenuController = Knit.GetController("MenuController")
+		if MenuController and MenuController.MenuView then
+			MenuController.MenuView:SetVisible(true)
 		end
 
 		print("✅ [ClassController] Jugador ingresó al juego correctamente.")

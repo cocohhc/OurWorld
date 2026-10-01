@@ -8,38 +8,27 @@ function QuestNPCManager.new(onInteractedCallback)
 	local self = setmetatable({}, QuestNPCManager)
 	self.OnInteractedCallback = onInteractedCallback
 
-	-- Escuchar NPCs que aparezcan dinámicamente por Tag
+	-- Función auxiliar para verificar y vincular NPCs
+	local function checkAndAttach(instance: Instance)
+		if instance:IsA("Model") and (instance:GetAttribute("NPCId") or instance:HasTag("QuestNPC") or string.sub(instance.Name, 1, 4) == "NPC_") then
+			if not CollectionService:HasTag(instance, "QuestNPC") then
+				CollectionService:AddTag(instance, "QuestNPC")
+			end
+			self:AttachPrompt(instance)
+		end
+	end
+
+	-- 1. Escuchar asignaciones dinámicas por CollectionService Tag
 	CollectionService:GetInstanceAddedSignal("QuestNPC"):Connect(function(npcObject)
 		self:AttachPrompt(npcObject)
 	end)
 
-	-- Escuchar NPCs en Workspace directamente
-	Workspace.ChildAdded:Connect(function(child)
-		if child:GetAttribute("NPCId") or child:HasTag("QuestNPC") or string.sub(child.Name, 1, 4) == "NPC_" then
-			self:AttachPrompt(child)
-		end
+	-- 2. Escuchar cualquier nuevo NPC cargado dinámicamente en Workspace (incluyendo subcarpetas como Workspace.NPCs.Zone1)
+	Workspace.DescendantAdded:Connect(function(descendant)
+		checkAndAttach(descendant)
 	end)
 
-	-- Escuchar NPCs que aparezcan en Workspace.NPCs o Workspace.NPCs.PrimeraZona
-	local npcsFolder = Workspace:FindFirstChild("NPCs")
-	if npcsFolder then
-		npcsFolder.ChildAdded:Connect(function(child)
-			if child:GetAttribute("NPCId") or child:HasTag("QuestNPC") or string.sub(child.Name, 1, 4) == "NPC_" then
-				self:AttachPrompt(child)
-			end
-		end)
-
-		local primeraZonaFolder = npcsFolder:FindFirstChild("PrimeraZona")
-		if primeraZonaFolder then
-			primeraZonaFolder.ChildAdded:Connect(function(child)
-				if child:GetAttribute("NPCId") or child:HasTag("QuestNPC") or string.sub(child.Name, 1, 4) == "NPC_" then
-					self:AttachPrompt(child)
-				end
-			end)
-		end
-	end
-
-	-- Ejecutar búsqueda inicial dando tiempo a que Workspace termine de cargar
+	-- 3. Ejecutar búsqueda inicial en diferido
 	task.defer(function()
 		self:SetupNPCs()
 	end)
@@ -48,80 +37,89 @@ function QuestNPCManager.new(onInteractedCallback)
 end
 
 function QuestNPCManager:SetupNPCs()
+	-- Procesar elementos etiquetados previamente
 	for _, npcObject in ipairs(CollectionService:GetTagged("QuestNPC")) do
 		self:AttachPrompt(npcObject)
 	end
 
-	-- Buscar directamente en raíz de Workspace
-	for _, child in ipairs(Workspace:GetChildren()) do
-		if child:IsA("Model") and (child:GetAttribute("NPCId") or string.sub(child.Name, 1, 4) == "NPC_") then
-			if not CollectionService:HasTag(child, "QuestNPC") then
-				CollectionService:AddTag(child, "QuestNPC")
+	-- Escaneo recursivo profundo de todo el Workspace (cubre Workspace.NPCs y cualquier subzona como Zone1, PrimeraZona, etc.)
+	for _, descendant in ipairs(Workspace:GetDescendants()) do
+		if descendant:IsA("Model") and (descendant:GetAttribute("NPCId") or string.sub(descendant.Name, 1, 4) == "NPC_") then
+			if not CollectionService:HasTag(descendant, "QuestNPC") then
+				CollectionService:AddTag(descendant, "QuestNPC")
 			end
-			self:AttachPrompt(child)
-		end
-	end
-
-	-- Buscar también en la estructura de carpetas Workspace.NPCs.PrimeraZona
-	local npcsFolder = Workspace:FindFirstChild("NPCs")
-	if npcsFolder then
-		local primeraZonaFolder = npcsFolder:FindFirstChild("PrimeraZona")
-		local targetFolder = primeraZonaFolder or npcsFolder
-
-		for _, child in ipairs(targetFolder:GetChildren()) do
-			if child:IsA("Model") and (child:GetAttribute("NPCId") or string.sub(child.Name, 1, 4) == "NPC_") then
-				if not CollectionService:HasTag(child, "QuestNPC") then
-					CollectionService:AddTag(child, "QuestNPC")
-				end
-				self:AttachPrompt(child)
-			end
+			self:AttachPrompt(descendant)
 		end
 	end
 end
 
 function QuestNPCManager:AttachPrompt(npcObject: Instance)
+	if not npcObject or not npcObject:IsDescendantOf(game) then return end
+	if npcObject:FindFirstChild("QuestPrompt", true) then return end
+
+	-- Evitar ejecuciones duplicadas en paralelo para la misma instancia
+	self.AttachingMap = self.AttachingMap or {}
+	if self.AttachingMap[npcObject] then return end
+	self.AttachingMap[npcObject] = true
+
 	task.spawn(function()
-		local targetPart: BasePart? = nil
-
-		if npcObject:IsA("BasePart") then
-			targetPart = npcObject
-		elseif npcObject:IsA("Model") then
-			-- Esperar activamente a las partes principales del modelo
-			targetPart = npcObject.PrimaryPart
-				or npcObject:WaitForChild("HumanoidRootPart", 10) :: BasePart?
-				or npcObject:WaitForChild("Head", 5) :: BasePart?
-
-			if not targetPart then
-				-- Si no encuentra RootPart ni Head, esperar a cualquier BasePart que replique
-				local hrp = npcObject:FindFirstChildOfClass("BasePart")
-				if not hrp then
-					local childAddedConnection
-					childAddedConnection = npcObject.ChildAdded:Connect(function(child)
-						if child:IsA("BasePart") then
-							targetPart = child
-						end
-					end)
-
-					local start = os.clock()
-					while not targetPart and (os.clock() - start) < 10 do
-						task.wait(0.2)
-					end
-
-					if childAddedConnection then
-						childAddedConnection:Disconnect()
-					end
-				else
-					targetPart = hrp
+		local function findPart(): BasePart?
+			if not npcObject or not npcObject:IsDescendantOf(game) then return nil end
+			if npcObject:IsA("BasePart") then
+				return npcObject
+			elseif npcObject:IsA("Model") then
+				if npcObject.PrimaryPart then
+					return npcObject.PrimaryPart
 				end
+				local hrp = npcObject:FindFirstChild("HumanoidRootPart", true)
+				if hrp and hrp:IsA("BasePart") then
+					return hrp
+				end
+				local head = npcObject:FindFirstChild("Head", true)
+				if head and head:IsA("BasePart") then
+					return head
+				end
+				for _, descendant in ipairs(npcObject:GetDescendants()) do
+					if descendant:IsA("BasePart") then
+						return descendant
+					end
+				end
+			end
+			return nil
+		end
+
+		local targetPart = findPart()
+
+		-- Escuchar continuamente sin limite arbitrario de tiempo mientras el objeto exista en la escena
+		if not targetPart then
+			local connection: RBXScriptConnection? = nil
+
+			connection = npcObject.DescendantAdded:Connect(function(descendant)
+				if descendant:IsA("BasePart") and not targetPart then
+					targetPart = findPart()
+				end
+			end)
+
+			while not targetPart and npcObject:IsDescendantOf(game) do
+				targetPart = findPart()
+				if targetPart then break end
+				task.wait(0.5)
+			end
+
+			if connection then
+				connection:Disconnect()
 			end
 		end
 
-		if not targetPart then
-			warn(`⚠️ [QuestNPCManager] No se encontró una parte válida para colocar el Prompt en {npcObject.Name}`)
+		self.AttachingMap[npcObject] = nil
+
+		if not targetPart or not npcObject:IsDescendantOf(game) then
 			return
 		end
 
-		if targetPart:FindFirstChild("QuestPrompt") then return end
+		if targetPart:FindFirstChild("QuestPrompt") or npcObject:FindFirstChild("QuestPrompt", true) then
+			return
+		end
 
 		local npcId = npcObject:GetAttribute("NPCId")
 		if not npcId or npcId == "" then

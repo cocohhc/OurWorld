@@ -12,7 +12,9 @@ local ClassData = require(sharedClasses:WaitForChild("ClassData"))
 
 local ClassService = Knit.CreateService({
 	Name = "ClassService",
-	Client = {},
+	Client = {
+		ClassSelected = Knit.CreateSignal(), -- Signal requerida por MenuController
+	},
 })
 
 function ClassService:KnitStart()
@@ -33,7 +35,10 @@ function ClassService.Client:SelectCharacter(player: Player, slotId: string)
 	local slot = PlayerDataManager:SelectSlot(player, slotId)
 	if not slot then return false end
 
-	-- 1. Aplicar la apariencia visual y la personalidad al personaje real en Workspace
+	-- 1. Forzar la aparición física del personaje en el juego
+	player:LoadCharacter()
+
+	-- 2. Aplicar apariencia y personalidad al modelo recién instanciado
 	if player.Character then
 		self.Server.ClassAppearanceService:ApplyAppearance(player.Character, slot.Class, slot.Subtype)
 		if slot.Personality then
@@ -41,7 +46,7 @@ function ClassService.Client:SelectCharacter(player: Player, slotId: string)
 		end
 	end
 
-	-- 2. Otorgar ítems/arma del personaje seleccionado
+	-- 3. Entregar ítems e inventario
 	local InventoryService = Knit.GetService("InventoryService")
 	local classInfo = ClassData.Classes[slot.Class]
 	if classInfo and InventoryService then
@@ -52,7 +57,10 @@ function ClassService.Client:SelectCharacter(player: Player, slotId: string)
 		InventoryService:AddItem(player, itemId)
 	end
 
-	print(`[ClassService] Skin, personalidad y datos aplicados para {player.Name} ({slot.Name})`)
+	-- Notificar a los controladores del cliente (ej. MenuController)
+	self.ClassSelected:Fire(player, slot)
+
+	print(`[ClassService] Personaje cargado manualmente para {player.Name}`)
 	return true
 end
 
@@ -65,7 +73,10 @@ function ClassService.Client:CreateCharacter(player: Player, className: string, 
 	local slot = PlayerDataManager:CreateCharacterSlot(player, className, subtype, charName, personalityKey)
 	if not slot then return false end
 
-	-- 1. Aplicar la apariencia y personalidad al personaje real en Workspace
+	-- 1. Forzar la aparición física del personaje
+	player:LoadCharacter()
+
+	-- 2. Aplicar la apariencia y personalidad
 	if player.Character then
 		self.Server.ClassAppearanceService:ApplyAppearance(player.Character, className, subtype)
 		if slot.Personality then
@@ -73,7 +84,7 @@ function ClassService.Client:CreateCharacter(player: Player, className: string, 
 		end
 	end
 
-	-- 2. Entregar arma inicial al inventario
+	-- 3. Entregar arma inicial
 	local itemIdToGive = classInfo.DefaultItemId
 	if className == "Warrior" and subtype and classInfo.Subtypes and classInfo.Subtypes[subtype] then
 		itemIdToGive = classInfo.Subtypes[subtype].DefaultItemId
@@ -84,8 +95,51 @@ function ClassService.Client:CreateCharacter(player: Player, className: string, 
 		InventoryService:AddItem(player, itemIdToGive)
 	end
 
-	print(`[ClassService] Nuevo personaje creado ({charName} - {className}) con personalidad: {slot.Personality}`)
+	-- Notificar a los controladores del cliente (ej. MenuController)
+	self.ClassSelected:Fire(player, slot)
+
+	print(`[ClassService] Nuevo personaje instanciado para {player.Name}`)
 	return true
+end
+
+-- Pone en reposo los sistemas del servidor y desvincula el personaje activo del jugador
+function ClassService:DeselectCharacter(player: Player): boolean
+	print(`🚪 [ClassService] Poniendo en reposo y deseleccionando personaje para: {player.Name}`)
+
+	-- 1. Resetear la ranura activa en PlayerDataManager
+	local PlayerDataManager = Knit.GetService("PlayerDataManager")
+	if PlayerDataManager then
+		if typeof(PlayerDataManager.DeselectSlot) == "function" then
+			PlayerDataManager:DeselectSlot(player)
+		elseif typeof(PlayerDataManager.SetActiveSlot) == "function" then
+			PlayerDataManager:SetActiveSlot(player, nil)
+		end
+	end
+
+	-- 2. Limpiar herramientas físicas en Backpack y Personaje
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if backpack then
+		backpack:ClearAllChildren()
+	end
+
+	if player.Character then
+		for _, item in ipairs(player.Character:GetChildren()) do
+			if item:IsA("Tool") then
+				item:Destroy()
+			end
+		end
+		-- 3. Remover el modelo del personaje del mundo
+		player.Character:Destroy()
+		player.Character = nil
+	end
+
+	print(`✅ [ClassService] Sistemas en el servidor puestos en reposo para {player.Name}.`)
+	return true
+end
+
+-- Método expuesto en la API cliente
+function ClassService.Client:DeselectCharacter(player: Player): boolean
+	return self.Server:DeselectCharacter(player)
 end
 
 return ClassService

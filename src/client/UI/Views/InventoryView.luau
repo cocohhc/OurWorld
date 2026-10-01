@@ -8,6 +8,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local PlayerScripts = LocalPlayer:WaitForChild("PlayerScripts")
 
 local UITheme = require(PlayerScripts:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("UITheme"))
+local UIDragService = require(PlayerScripts:WaitForChild("Client"):WaitForChild("UI"):WaitForChild("Framework"):WaitForChild("Components"):WaitForChild("UIDragService"))
 
 local InventoryView = {}
 InventoryView.__index = InventoryView
@@ -75,6 +76,9 @@ function InventoryView:BuildUI()
 	self.MainFrame.Visible = false
 	self.MainFrame.Parent = self.ScreenGui
 
+	-- Habilitar el arrastre de la ventana completa
+	UIDragService.MakeDraggable(self.MainFrame)
+
 	local title = UITheme.CreateLabel("MOCHILA", 20, true)
 	title.Size = UDim2.new(0.5, 0, 0, 28)
 	title.Position = UDim2.new(0.04, 0, 0.04, 0)
@@ -106,7 +110,7 @@ function InventoryView:BuildUI()
 	local mainTextColor = (UITheme.Colors and (UITheme.Colors.TextMain or UITheme.Colors.Text or UITheme.Colors.TextPrimary)) or Color3.fromRGB(255, 255, 255)
 	local subTextColor = (UITheme.Colors and (UITheme.Colors.TextSub or UITheme.Colors.SubText)) or Color3.fromRGB(180, 180, 180)
 
-for i = 1, self.MaxSlots do
+	for i = 1, self.MaxSlots do
 		local slotCard = UITheme.CreateContainer(UDim2.fromOffset(56, 56))
 		slotCard.Parent = gridContainer
 

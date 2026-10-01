@@ -198,4 +198,17 @@ function QuestController:OpenNPCMenu(npcId: string, npcName: string)
 	end)
 end
 
+function QuestController:ToggleQuestTracker()
+	if self.TrackerView then
+		self.TrackerView:Toggle()
+		if self.TrackerView.IsOpen then
+			self:RefreshTrackerUI()
+		end
+	end
+end
+
+function QuestController:ToggleQuestWindow()
+	self:ToggleQuestTracker()
+end
+
 return QuestController
