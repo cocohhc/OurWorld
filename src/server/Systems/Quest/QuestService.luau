@@ -96,7 +96,7 @@ function QuestService.Client:AcceptQuest(player: Player, questId: string)
 	questData.Active[questId] = {
 		Objectives = initialObjectives,
 		AcceptedAt = os.time(),
-		ReadyToTurnIn = false, -- Marcador de lista para reclamar
+		ReadyToTurnIn = false,
 	}
 
 	self.Server.Client.QuestDataUpdated:Fire(player, questData)
@@ -197,7 +197,7 @@ function QuestService.Client:ClaimReward(player: Player, questId: string)
 	return true
 end
 
--- Entregar recompensas
+-- Entregar recompensas e integrar con PlayerDataManager
 function QuestService:GiveRewards(player: Player, rewards: table)
 	if not rewards or not self.PlayerDataManager then return end
 
@@ -206,30 +206,16 @@ function QuestService:GiveRewards(player: Player, rewards: table)
 		targetData = self.PlayerDataManager:GetActiveSlot(player)
 	end
 
-	if not targetData then
-		local profile = nil
-		if type(self.PlayerDataManager.GetProfile) == "function" then
-			profile = self.PlayerDataManager:GetProfile(player)
-		elseif type(self.PlayerDataManager.GetPlayerProfile) == "function" then
-			profile = self.PlayerDataManager:GetPlayerProfile(player)
-		elseif type(self.PlayerDataManager.GetProfileData) == "function" then
-			profile = self.PlayerDataManager:GetProfileData(player)
-		elseif self.PlayerDataManager.Profiles then
-			profile = self.PlayerDataManager.Profiles[player]
-		end
-
-		if profile then
-			targetData = profile.Data or profile
-		end
-	end
-
-	if not targetData then return end
-
 	for _, reward in ipairs(rewards) do
-		if reward.Type == "Exp" then
-			targetData.Experience = (targetData.Experience or 0) + reward.Amount
-		elseif reward.Type == "Gold" then
-			targetData.Gold = (targetData.Gold or 0) + reward.Amount
+		if reward.Type == "Exp" or reward.Type == "XP" then
+			if type(self.PlayerDataManager.AddXP) == "function" then
+				self.PlayerDataManager:AddXP(player, reward.Amount)
+			end
+		elseif reward.Type == "Gold" or reward.Type == "Money" then
+			if targetData then
+				targetData.Gold = (targetData.Gold or 0) + reward.Amount
+				player:SetAttribute("Gold", targetData.Gold)
+			end
 		end
 	end
 end

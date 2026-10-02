@@ -41,7 +41,7 @@ function ClassService.Client:SelectCharacter(player: Player, slotId: string)
 	-- 2. Aplicar apariencia y personalidad al modelo recién instanciado
 	if player.Character then
 		self.Server.ClassAppearanceService:ApplyAppearance(player.Character, slot.Class, slot.Subtype)
-		if slot.Personality then
+		if slot.Personality and typeof(self.Server.ClassAppearanceService.ApplyPersonalityAnimations) == "function" then
 			self.Server.ClassAppearanceService:ApplyPersonalityAnimations(player.Character, slot.Personality)
 		end
 	end
@@ -79,7 +79,7 @@ function ClassService.Client:CreateCharacter(player: Player, className: string, 
 	-- 2. Aplicar la apariencia y personalidad
 	if player.Character then
 		self.Server.ClassAppearanceService:ApplyAppearance(player.Character, className, subtype)
-		if slot.Personality then
+		if slot.Personality and typeof(self.Server.ClassAppearanceService.ApplyPersonalityAnimations) == "function" then
 			self.Server.ClassAppearanceService:ApplyPersonalityAnimations(player.Character, slot.Personality)
 		end
 	end

@@ -14,7 +14,7 @@ local PROFILE_TEMPLATE = {
 }
 
 local ProfileStore = ProfileService.GetProfileStore(
-	"WhishGo_MultiSlot_v9",
+	"WhishGo_MultiSlot_v10",
 	PROFILE_TEMPLATE
 )
 
@@ -76,7 +76,7 @@ function PlayerDataManager:GetSlots(player: Player)
 	return profile and profile.Data.Slots or {}
 end
 
-function PlayerDataManager:CreateCharacterSlot(player: Player, className: string, subtype: string?, charName: string)
+function PlayerDataManager:CreateCharacterSlot(player: Player, className: string, subtype: string?, charName: string, personalityKey: string?)
 	local profile = self:WaitForProfile(player)
 	if not profile then return nil end
 
@@ -90,11 +90,16 @@ function PlayerDataManager:CreateCharacterSlot(player: Player, className: string
 		Name = if charName ~= "" then charName else "Héroe",
 		Class = className,
 		Subtype = subtype or "",
+		Personality = personalityKey or "Heroic",
 		Level = 1,
+		XP = 0,
+		EvolutionPoints = 0,
+		Radiation = 100,
+		MaxRadiation = 100,
+		RadiationRegenRate = 2,
 		Gold = 0,
 		Inventory = {},
 		CreatedAt = os.time(),
-		-- ESTRUCTURA DE MISIONES POR PERSONAJE / SLOT
 		Quests = {
 			Active = {},
 			Completed = {},
@@ -103,6 +108,10 @@ function PlayerDataManager:CreateCharacterSlot(player: Player, className: string
 
 	table.insert(profile.Data.Slots, newSlot)
 	profile.Data.ActiveSlotId = newSlot.Id
+
+	-- Aplicar atributos inmediatamente tras la creación
+	self:ApplyPlayerAttributes(player, newSlot)
+
 	print(`[PlayerDataManager] Nueva ranura creada: '{newSlot.Name}' ({className})`)
 	return newSlot
 end
@@ -115,6 +124,9 @@ function PlayerDataManager:SelectSlot(player: Player, slotId: string)
 		if slot.Id == slotId then
 			profile.Data.ActiveSlotId = slotId
 			print(`[PlayerDataManager] {player.Name} seleccionó la ranura '{slot.Name}'`)
+
+			-- Aplicar los atributos del personaje en la instancia de Player
+			self:ApplyPlayerAttributes(player, slot)
 			return slot
 		end
 	end
@@ -127,6 +139,15 @@ function PlayerDataManager:GetActiveSlot(player: Player)
 
 	for _, slot in ipairs(profile.Data.Slots) do
 		if slot.Id == profile.Data.ActiveSlotId then
+			-- Parche defensivo de migración para slots antiguos
+			slot.XP = slot.XP or 0
+			slot.Gold = slot.Gold or 0
+			slot.Personality = slot.Personality or "Heroic"
+			slot.EvolutionPoints = slot.EvolutionPoints or 0
+			slot.Radiation = slot.Radiation or 100
+			slot.MaxRadiation = slot.MaxRadiation or 100
+			slot.RadiationRegenRate = slot.RadiationRegenRate or 2
+
 			-- Asegurar tabla Quests en slots antiguos
 			slot.Quests = slot.Quests or { Active = {}, Completed = {} }
 			slot.Quests.Active = slot.Quests.Active or {}
@@ -139,6 +160,44 @@ end
 
 function PlayerDataManager:GetProfile(player: Player)
 	return self:WaitForProfile(player)
+end
+
+function PlayerDataManager:ApplyPlayerAttributes(player: Player, slotData: table)
+	if not player or not slotData then return end
+
+	local level = slotData.Level or 1
+	local ProgressionService = Knit.GetService("ProgressionService")
+	local maxXP = if ProgressionService then ProgressionService:GetRequiredXP(level) else math.floor(100 * (math.max(1, level) ^ 1.5))
+	slotData.MaxXP = maxXP
+
+	-- Atributos de Experiencia y Nivel
+	player:SetAttribute("Level", level)
+	player:SetAttribute("XP", slotData.XP or 0)
+	player:SetAttribute("MaxXP", maxXP)
+
+	-- Atributos de Economía y Personalidad
+	player:SetAttribute("Gold", slotData.Gold or 0)
+	player:SetAttribute("Personality", slotData.Personality or "Heroic")
+
+	-- Atributos de Radiación
+	player:SetAttribute("Radiation", slotData.Radiation or 0)
+	player:SetAttribute("MaxRadiation", slotData.MaxRadiation or 100)
+end
+
+function PlayerDataManager:AddXP(player: Player, amount: number)
+	local ProgressionService = Knit.GetService("ProgressionService")
+	if ProgressionService then
+		ProgressionService:AddXP(player, amount)
+	end
+end
+
+function PlayerDataManager:SetRadiation(player: Player, amount: number)
+	local slot = self:GetActiveSlot(player)
+	if not slot then return end
+
+	local maxRad = slot.MaxRadiation or 100
+	slot.Radiation = math.clamp(amount, 0, maxRad)
+	player:SetAttribute("Radiation", slot.Radiation)
 end
 
 function PlayerDataManager:AddItemToActiveSlot(player: Player, itemId: string)

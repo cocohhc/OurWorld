@@ -89,6 +89,9 @@ function InventoryController:KnitStart()
 			warn("❌ [InventoryController] No se pudo obtener el inventario inicial del servidor. Error:", initialData)
 		end
 	end)
+
+	-- 6. Sincronización en tiempo real de XP y Radiación
+	self:SetupStatsListeners()
 end
 
 function InventoryController:ToggleInventory()
@@ -131,6 +134,21 @@ function InventoryController:ShowHotbar()
 		end
 	end
 
+	-- Actualización inmediata de las barras de estado (XP y Radiación)
+	local currentXP = LocalPlayer:GetAttribute("XP") or 0
+	local maxXP = LocalPlayer:GetAttribute("MaxXP") or 100
+	local currentRadiation = LocalPlayer:GetAttribute("Radiation") or 0
+	local maxRadiation = LocalPlayer:GetAttribute("MaxRadiation") or 100
+
+	if self.Hotbar then
+		if typeof(self.Hotbar.UpdateXP) == "function" then
+			self.Hotbar:UpdateXP(currentXP, maxXP)
+		end
+		if typeof(self.Hotbar.UpdateRadiation) == "function" then
+			self.Hotbar:UpdateRadiation(currentRadiation, maxRadiation)
+		end
+	end
+
 	-- 🎒 Solicitar datos del inventario usando la API pública de cliente de Knit
 	local InventoryService = Knit.GetService("InventoryService")
 	if InventoryService then
@@ -143,6 +161,49 @@ function InventoryController:ShowHotbar()
 			end):catch(warn)
 		end
 	end
+end
+
+function InventoryController:SetupStatsListeners()
+	local function updateXP()
+		local currentXP = LocalPlayer:GetAttribute("XP") or 0
+		local maxXP = LocalPlayer:GetAttribute("MaxXP") or 100
+		if self.Hotbar and typeof(self.Hotbar.UpdateXP) == "function" then
+			self.Hotbar:UpdateXP(currentXP, maxXP)
+		end
+	end
+
+	local function updateRadiation(currentRad: number?, maxRad: number?)
+		local currentRadiation = currentRad or LocalPlayer:GetAttribute("Radiation") or 0
+		local maxRadiation = maxRad or LocalPlayer:GetAttribute("MaxRadiation") or 100
+
+		if self.Hotbar and typeof(self.Hotbar.UpdateRadiation) == "function" then
+			self.Hotbar:UpdateRadiation(currentRadiation, maxRadiation)
+		end
+	end
+
+	-- 1. Escuchar cambios de atributos en el personaje
+	LocalPlayer:GetAttributeChangedSignal("XP"):Connect(updateXP)
+	LocalPlayer:GetAttributeChangedSignal("MaxXP"):Connect(updateXP)
+	LocalPlayer:GetAttributeChangedSignal("Radiation"):Connect(function()
+		updateRadiation()
+	end)
+	LocalPlayer:GetAttributeChangedSignal("MaxRadiation"):Connect(function()
+		updateRadiation()
+	end)
+
+	-- 2. Escuchar actualización remota en tiempo real de CombatService
+	task.spawn(function()
+		local CombatService = Knit.GetService("CombatService")
+		if CombatService and CombatService.RadiationUpdated then
+			CombatService.RadiationUpdated:Connect(function(currentRad: number, maxRad: number)
+				updateRadiation(currentRad, maxRad)
+			end)
+		end
+	end)
+
+	-- 3. Inicialización inmediata
+	updateXP()
+	updateRadiation()
 end
 
 function InventoryController:HideHotbar()

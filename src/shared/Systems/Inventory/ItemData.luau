@@ -1,70 +1,90 @@
 local ItemData = {}
 
-export type Item = {
-	Id: string,
+export type ItemConfig = {
 	Name: string,
-	Type: string,
-	WeaponType: string?,
 	Description: string,
-	Icon: string?, -- 👈 Se agrega la propiedad Icon a la definición de tipo
-	Damage: number?,
-	HitboxSize: Vector3?,
-	HitboxOffset: number?,
-	Cooldown: number?,
+	WeaponType: "Sword" | "Spear" | "Orb" | "Staff" | "Hammer" | "Axe" | "Dagger" | "Bow",
+	Damage: number,
+	Rarity: "Common" | "Rare" | "Epic" | "Legendary",
+	Icon: string?,
 }
 
 ItemData.Items = {
-	Sword = {
-		Id = "Sword",
-		Name = "Espada de Hierro",
-		Type = "Weapon",
+	-- 🗡️ Armas de Vanguardia
+	SunBlade = {
+		Name = "Mandoble de Helios",
+		Description = "Espada pesada forjada con aleación solar de alto impacto.",
 		WeaponType = "Sword",
-		Description = "Una espada básica pero afilada otorgada a los guerreros novatos.",
-		Icon = "rbxassetid://10000000", -- 👈 Coloca aquí el Asset ID real de la textura/icono
-		Damage = 25,
-		HitboxSize = Vector3.new(5, 5, 6),
-		HitboxOffset = 4,
-		Cooldown = 0.6,
-	} :: Item,
+		Damage = 35,
+		Rarity = "Rare",
+		Icon = "rbxassetid://0",
+	} :: ItemConfig,
 
-	Bow = {
-		Id = "Bow",
-		Name = "Arco de Caza",
-		Type = "Weapon",
-		WeaponType = "Bow",
-		Description = "Un arco flexible ideal para ataques a distancia.",
-		Icon = "rbxassetid://10000001", -- 👈 ID del icono del arco
-		Damage = 18,
-		HitboxSize = Vector3.new(4, 4, 15),
-		HitboxOffset = 9,
-		Cooldown = 1.0,
-	} :: Item,
+	AegisSpear = {
+		Name = "Lanza del Baluarte",
+		Description = "Lanza táctica diseñada para perforar defensas sin exponer al portador.",
+		WeaponType = "Spear",
+		Damage = 28,
+		Rarity = "Common",
+		Icon = "rbxassetid://0",
+	} :: ItemConfig,
 
-	Staff = {
-		Id = "Staff",
-		Name = "Báculo Arcano",
-		Type = "Weapon",
+	-- 🔮 Armas de Cronomante
+	ChronoOrb = {
+		Name = "Orbe del Continuo",
+		Description = "Reliquia flotante que canaliza pulsos de energía temporal.",
+		WeaponType = "Orb",
+		Damage = 22,
+		Rarity = "Epic",
+		Icon = "rbxassetid://0",
+	} :: ItemConfig,
+
+	VoidStaff = {
+		Name = "Báculo Abisal",
+		Description = "Báculo canalizador de corrientes de vacilaciones arcanas.",
 		WeaponType = "Staff",
-		Description = "Canaliza las corrientes de maná para lanzar hechizos básicos.",
-		Icon = "rbxassetid://10000002", -- 👈 ID del icono del báculo
-		Damage = 30,
-		HitboxSize = Vector3.new(6, 6, 8),
-		HitboxOffset = 5,
-		Cooldown = 1.2,
-	} :: Item,
+		Damage = 40,
+		Rarity = "Epic",
+		Icon = "rbxassetid://0",
+	} :: ItemConfig,
 
-	Hammer = {
-		Id = "Hammer",
-		Name = "Mazo Gigante",
-		Type = "Weapon",
+	-- 🔨 Armas de Titán
+	WarHammer = {
+		Name = "Mazo Destrozador",
+		Description = "Colosal martillo capaz de quebrar armaduras pesadas de un solo impacto.",
 		WeaponType = "Hammer",
-		Description = "Un pesado mazo de piedra que requiere gran fuerza para blandir.",
-		Icon = "rbxassetid://10000003", -- 👈 ID del icono del mazo
-		Damage = 45,
-		HitboxSize = Vector3.new(8, 6, 8),
-		HitboxOffset = 5,
-		Cooldown = 1.8,
-	} :: Item,
+		Damage = 50,
+		Rarity = "Rare",
+		Icon = "rbxassetid://0",
+	} :: ItemConfig,
+
+	DualAxes = {
+		Name = "Hachas de Plomo",
+		Description = "Par de hachas equilibradas para ataques brutales a corta distancia.",
+		WeaponType = "Axe",
+		Damage = 30,
+		Rarity = "Common",
+		Icon = "rbxassetid://0",
+	} :: ItemConfig,
+
+	-- 🗡️ Armas de Sombrío
+	ShadowDaggers = {
+		Name = "Dagas Sombrías",
+		Description = "Hojas gemelas impregnadas en neurotoxina de baja frecuencia.",
+		WeaponType = "Dagger",
+		Damage = 18,
+		Rarity = "Rare",
+		Icon = "rbxassetid://0",
+	} :: ItemConfig,
+
+	PlasmaBow = {
+		Name = "Arco Furia Plasma",
+		Description = "Arco de alta tecnología que proyecta flechas de energía pura.",
+		WeaponType = "Bow",
+		Damage = 32,
+		Rarity = "Legendary",
+		Icon = "rbxassetid://0",
+	} :: ItemConfig,
 }
 
 return ItemData

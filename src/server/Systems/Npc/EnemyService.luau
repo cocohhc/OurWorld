@@ -1,3 +1,6 @@
+-- src/server/Systems/Npc/EnemyService.luau
+-- Gestor centralizado de enemigos, respawn con caché y otorgamiento de XP/Misiones.
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
@@ -11,13 +14,24 @@ local EnemyService = Knit.CreateService({
 	Client = {},
 })
 
+-- Tabla de XP base por tipo/raza de enemigo
+local ENEMY_XP_REWARDS = {
+	["Scavenger"] = 10,
+	["Bandido"] = 15,
+	["Mutant_Rad"] = 40,
+	["Elite_Soldier"] = 90,
+	["Boss_Radiation"] = 350,
+}
+
 function EnemyService:KnitStart()
 	self.QuestService = Knit.GetService("QuestService")
 	self.EnemyAIService = Knit.GetService("EnemyAIService")
-	self.Templates = {} -- Caché en memoria para los enemigos registrados en Workspace
-	self.PreClonedEnemies = {} -- [NUEVO] Cola de clones preparados para evitar lag
+	self.ProgressionService = Knit.GetService("ProgressionService")
 
-	-- [NUEVO] Carpeta oculta para almacenar pre-clones inactivos
+	self.Templates = {} -- Caché en memoria para los enemigos registrados en Workspace
+	self.PreClonedEnemies = {} -- Cola de clones preparados para evitar lag
+
+	-- Carpeta oculta para almacenar pre-clones inactivos
 	self.EnemyCacheFolder = Instance.new("Folder")
 	self.EnemyCacheFolder.Name = "EnemyPreClones"
 	self.EnemyCacheFolder.Parent = ServerStorage
@@ -52,8 +66,7 @@ function EnemyService:KnitStart()
 	print("👾 [EnemyService] Gestor centralizado de enemigos activado (Escaneo recursivo de zonas).")
 end
 
--- [NUEVO] Estrategia de rendimiento: Clona el siguiente NPC en segundo plano
--- Esto absorbe el impacto de rendimiento del Clone() antes de que se necesite el respawn
+-- Estrategia de rendimiento: Clona el siguiente NPC en segundo plano
 function EnemyService:PreCloneEnemy(enemyName: string)
 	self.PreClonedEnemies[enemyName] = self.PreClonedEnemies[enemyName] or {}
 
@@ -64,6 +77,21 @@ function EnemyService:PreCloneEnemy(enemyName: string)
 	clone:SetAttribute("Registered", nil)
 	clone.Parent = self.EnemyCacheFolder
 	table.insert(self.PreClonedEnemies[enemyName], clone)
+end
+
+-- Cálculo y entrega de experiencia al jugador atacante
+function EnemyService:GrantEnemyXP(killerPlayer: Player, enemyModel: Model, enemyType: string)
+	if not killerPlayer or not enemyModel then return end
+
+	local baseXP = ENEMY_XP_REWARDS[enemyType] or 15
+	local enemyLevel = enemyModel:GetAttribute("Level") or 1
+	local totalXP = math.floor(baseXP * (1 + (enemyLevel - 1) * 0.2))
+
+	if self.ProgressionService then
+		self.ProgressionService:AddXP(killerPlayer, totalXP)
+	end
+
+	print(`⚔️ [EnemyService] {killerPlayer.Name} eliminó a {enemyModel.Name} (Nivel {enemyLevel}) y ganó +{totalXP} XP.`)
 end
 
 function EnemyService:RegisterEnemy(enemyModel: Model)
@@ -111,8 +139,7 @@ function EnemyService:RegisterEnemy(enemyModel: Model)
 		self.EnemyAIService:RegisterEnemy(enemyModel, targetId)
 	end
 
-	-- [SOLUCIÓN FIX]: Usar :Once() y un flag "IsDead" evita que el evento se dispare
-	-- múltiples veces por frame al colapsar las físicas.
+	-- Evento de Muerte
 	humanoid.Died:Once(function()
 		if enemyModel:GetAttribute("IsDead") then return end
 		enemyModel:SetAttribute("IsDead", true)
@@ -128,10 +155,10 @@ function EnemyService:RegisterEnemy(enemyModel: Model)
 
 		local hrp = enemyModel:FindFirstChild("HumanoidRootPart")
 		if hrp then
-			hrp.CanCollide = false -- Quita colisión al HRP para que el cuerpo no se quede de pie
+			hrp.CanCollide = false
 		end
 
-		-- 3. Registrar Misión
+		-- 3. Registrar Misión y Experiencia
 		local creatorTag = humanoid:FindFirstChild("creator")
 		local playerWhoKilled = creatorTag and creatorTag.Value
 
@@ -140,6 +167,9 @@ function EnemyService:RegisterEnemy(enemyModel: Model)
 			if self.QuestService then
 				self.QuestService:RegisterKill(playerWhoKilled, targetId)
 			end
+
+			local enemyType = enemyModel:GetAttribute("EnemyType") or targetId
+			self:GrantEnemyXP(playerWhoKilled, enemyModel, enemyType)
 		end
 
 		-- 4. Preparar silenciosamente el clon del respawn mientras el cadáver reposa
